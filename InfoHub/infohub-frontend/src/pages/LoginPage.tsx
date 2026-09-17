@@ -1,46 +1,59 @@
 import { useState } from "react";
 import { useNavigate, Link } from "react-router-dom";
-import { ArrowRight, ShieldCheck } from "lucide-react";
+import { ArrowRight } from "lucide-react";
 import { Logo } from "../components/Logo";
 import { StageRail } from "../components/StageRail";
 import { useAuth } from "../store/AuthContext";
-import { useData } from "../store/DataContext";
 import { PrimaryButton } from "../components/Kit";
+import type { Etapa } from "../types";
 
-const contasDemo = [
-  { email: "renata.bock@infohub.amf.br", senha: "admin123", label: "Renata Bock", papel: "Administradora" },
-  { email: "diego.casagrande@infohub.amf.br", senha: "mentor123", label: "Prof. Diego", papel: "Mentor" },
-  { email: "bruno.kellermann@aluno.amf.br", senha: "aluno123", label: "Bruno Kellermann", papel: "Aluno · líder" },
-  { email: "camila.restelatto@aluno.amf.br", senha: "aluno123", label: "Camila Restelatto", papel: "Aluna · integrante" },
-];
+// Puramente decorativo: a tela de login é pública, e etapa deixou de ser um
+// dado público (agora pertence a cada equipe — ver decisão 7 do backend).
+// Esses 6 nomes só ilustram a jornada padrão no hero, sem vir da API.
+const ETAPAS_DEMO: Etapa[] = [
+  "Envio da ideia",
+  "Contato com a equipe",
+  "Encontro 1",
+  "Encontro 2",
+  "Encontro 3",
+  "Encontro 4",
+].map((nome, i) => ({
+  id_etapa: i + 1,
+  id_equipe: 0,
+  ordem: i + 1,
+  nome,
+  descricao: "",
+  padrao: true,
+  criada_por: null,
+  criado_em: "",
+}));
 
 export function LoginPage() {
   const [email, setEmail] = useState("");
   const [senha, setSenha] = useState("");
   const [erro, setErro] = useState<string | null>(null);
+  const [entrando, setEntrando] = useState(false);
   const { entrar } = useAuth();
-  const { etapas } = useData();
   const navigate = useNavigate();
 
-  function handleSubmit(e: React.FormEvent) {
-    e.preventDefault();
-    const resultado = entrar(email, senha);
-    if (!resultado.ok) {
+  // O destino agora vem do perfil que a API devolveu, não mais de um palpite
+  // baseado no domínio do e-mail.
+  async function autenticar(contaEmail: string, contaSenha: string) {
+    setEntrando(true);
+    const resultado = await entrar(contaEmail, contaSenha);
+    setEntrando(false);
+
+    if (!resultado.ok || !resultado.usuario) {
       setErro(resultado.erro ?? "Não foi possível entrar.");
       return;
     }
     setErro(null);
-    const perfil = email.includes("aluno") ? "aluno" : "admin";
-    navigate(perfil === "aluno" ? "/aluno" : "/admin");
+    navigate(resultado.usuario.perfil === "aluno" ? "/aluno" : "/admin");
   }
 
-  function handleDemo(contaEmail: string, contaSenha: string) {
-    setEmail(contaEmail);
-    setSenha(contaSenha);
-    const resultado = entrar(contaEmail, contaSenha);
-    if (resultado.ok) {
-      navigate(contaEmail.includes("aluno") ? "/aluno" : "/admin");
-    }
+  function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    autenticar(email, senha);
   }
 
   return (
@@ -75,7 +88,7 @@ export function LoginPage() {
             sem depender mais de planilha e WhatsApp.
           </p>
           <div className="mt-8 bg-white/5 border border-white/10 rounded-2xl p-5">
-            <StageRail etapas={etapas} etapaAtual={4} size="sm" />
+            <StageRail etapas={ETAPAS_DEMO} ordemAtual={4} size="sm" />
           </div>
         </div>
 
@@ -120,8 +133,12 @@ export function LoginPage() {
               />
             </div>
             {erro && <p className="text-sm text-brand-danger">{erro}</p>}
-            <PrimaryButton type="submit" className="w-full flex items-center justify-center gap-2">
-              Entrar <ArrowRight size={16} />
+            <PrimaryButton
+              type="submit"
+              disabled={entrando}
+              className="w-full flex items-center justify-center gap-2"
+            >
+              {entrando ? "Entrando…" : "Entrar"} <ArrowRight size={16} />
             </PrimaryButton>
           </form>
 
@@ -132,26 +149,6 @@ export function LoginPage() {
             </Link>
           </p>
 
-          <div className="mt-10 pt-6 border-t border-paper-line">
-            <p className="text-xs font-medium text-text-soft flex items-center gap-1.5 mb-3">
-              <ShieldCheck size={14} /> Acesso rápido de demonstração
-            </p>
-            <div className="space-y-2">
-              {contasDemo.map((c) => (
-                <button
-                  key={c.email}
-                  onClick={() => handleDemo(c.email, c.senha)}
-                  className="w-full text-left flex items-center justify-between px-3.5 py-2.5 rounded-xl border border-paper-line hover:border-accent-orange/50 hover:bg-paper-alt/60 transition group"
-                >
-                  <span>
-                    <span className="block text-sm font-medium text-ink">{c.label}</span>
-                    <span className="block text-xs text-text-soft">{c.papel}</span>
-                  </span>
-                  <ArrowRight size={14} className="text-text-faint group-hover:text-accent-orange transition" />
-                </button>
-              ))}
-            </div>
-          </div>
         </div>
       </div>
     </div>

@@ -41,4 +41,9 @@ export const marcarProntoSchema = z.object({
   pronto: z.boolean(),
 });
 
+export const criarEtapaSchema = z.object({
+  nome: z.string().min(2, { error: "Nome muito curto" }).max(100),
+  descricao: z.string().min(1, { error: "Descreva a etapa" }),
+});
+
 export { areaIdeiaEnum, estagioIdeiaEnum, comoConheceuEnum };

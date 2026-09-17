@@ -4,6 +4,7 @@ import { z } from "zod";
 import { authenticate, requireRole } from "../../middlewares/auth";
 import { validate } from "../../middlewares/validate";
 import { query } from "../../config/db";
+import { validarEtapaPertenceEquipe } from "../equipes/equipes.service";
 
 export const anotacoesRouter = Router();
 
@@ -48,6 +49,7 @@ anotacoesRouter.post(
       id_equipe: number;
       id_etapa: number;
     };
+    await validarEtapaPertenceEquipe(id_etapa, id_equipe);
     const r = await query(
       `INSERT INTO anotacoes (descricao, id_usuario, id_equipe, id_etapa) VALUES ($1,$2,$3,$4) RETURNING *`,
       [descricao, req.usuario!.id_usuario, id_equipe, id_etapa]

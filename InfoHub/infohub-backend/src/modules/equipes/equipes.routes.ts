@@ -6,6 +6,7 @@ import {
   adicionarMentorSchema,
   atualizarLinkPitchSchema,
   avancarEtapaSchema,
+  criarEtapaSchema,
   idEquipeMentorParamSchema,
   idParamSchema,
   listarEquipesQuerySchema,
@@ -56,6 +57,15 @@ equipesRouter.patch(
   controller.atualizarLinkPitch
 );
 
+// Integrantes com nome/e-mail — é por aqui que o aluno descobre quem são os
+// colegas e quem é o líder, já que GET /usuarios é restrito a admin/mentor.
+equipesRouter.get(
+  "/:id/integrantes",
+  authenticate,
+  validate({ params: idParamSchema }),
+  controller.listarIntegrantes
+);
+
 equipesRouter.get(
   "/:id/mentores",
   authenticate,
@@ -78,4 +88,22 @@ equipesRouter.delete(
   requireRole("admin"),
   validate({ params: idEquipeMentorParamSchema }),
   controller.removerMentor
+);
+
+// Jornada da equipe (não é mais uma lista fixa de 6 — cada equipe tem a sua).
+equipesRouter.get(
+  "/:id/etapas",
+  authenticate,
+  validate({ params: idParamSchema }),
+  controller.listarEtapas
+);
+
+// Decisão do InfoHub via WhatsApp: só o mentor DESTA equipe pode
+// acrescentar etapas extras na jornada dela (checagem fina no controller).
+equipesRouter.post(
+  "/:id/etapas",
+  authenticate,
+  requireRole("mentor", "admin"),
+  validate({ params: idParamSchema, body: criarEtapaSchema }),
+  controller.criarEtapa
 );

@@ -119,6 +119,13 @@ export const statusEstilo: Record<StatusTarefaDescricao, { bg: string; text: str
   "Reprovada/Ajustar": { bg: "bg-brand-danger-soft", text: "text-brand-danger", dot: "bg-brand-danger" },
 };
 
+/**
+ * O backend já garante essa invariante no servidor (PATCH /equipes/:id/pronto
+ * só aceita `true` quando a equipe está na última etapa da jornada dela —
+ * ver equipes.service.ts, marcarProntoParaInovAMF). Não precisa checar
+ * "etapa === 6" aqui: isso deixou de fazer sentido desde que a jornada
+ * passou a ter tamanho variável por equipe.
+ */
 export function equipeProntaParaInovAMF(equipe: Equipe): boolean {
-  return equipe.id_etapa_atual === 6 && Boolean(equipe.pronto_para_inovamf);
+  return Boolean(equipe.pronto_para_inovamf);
 }

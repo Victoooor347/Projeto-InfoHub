@@ -9,6 +9,7 @@ import { etapasRouter } from "./modules/etapas/etapas.routes";
 import { statusTarefasRouter } from "./modules/statusTarefas/statusTarefas.routes";
 import { equipesRouter } from "./modules/equipes/equipes.routes";
 import { equipeUsuariosRouter } from "./modules/equipeUsuarios/equipeUsuarios.routes";
+import { equipeMentoresRouter } from "./modules/equipeMentores/equipeMentores.routes";
 import { tarefasRouter } from "./modules/tarefas/tarefas.routes";
 import { entregaveisRouter } from "./modules/entregaveis/entregaveis.routes";
 import { anotacoesRouter } from "./modules/anotacoes/anotacoes.routes";
@@ -27,10 +28,15 @@ app.get("/health", (_req, res) => {
 app.use("/api/auth", authRouter);
 app.use("/api/usuarios", usuariosRouter);
 app.use("/api/cursos", cursosRouter);
+// GET /api/etapas agora lista TODA etapa de TODA equipe (cada linha já
+// identificada por id_equipe) — não é mais o catálogo global ambíguo de
+// antes. Só admin/mentor (mesmo padrão de /equipe-usuarios). Aluno usa
+// GET /equipes/:id/etapas para a própria equipe.
 app.use("/api/etapas", etapasRouter);
 app.use("/api/status-tarefas", statusTarefasRouter);
 app.use("/api/equipes", equipesRouter);
 app.use("/api/equipe-usuarios", equipeUsuariosRouter);
+app.use("/api/equipe-mentores", equipeMentoresRouter);
 app.use("/api/tarefas", tarefasRouter);
 app.use("/api/entregaveis", entregaveisRouter);
 app.use("/api/anotacoes", anotacoesRouter);

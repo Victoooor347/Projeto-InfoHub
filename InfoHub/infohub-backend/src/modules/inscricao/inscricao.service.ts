@@ -3,6 +3,7 @@ import { pool } from "../../config/db";
 import { AppError } from "../../utils/AppError";
 import { USUARIO_COLUNAS_PUBLICAS, type Usuario } from "../usuarios/usuarios.types";
 import type { Equipe } from "../equipes/equipes.types";
+import { ETAPAS_PADRAO } from "../../db/etapasPadrao";
 import type { InscricaoInput } from "./inscricao.schemas";
 
 /**
@@ -34,16 +35,12 @@ export async function registrarCadastroInicial(input: InscricaoInput) {
     );
     const lider = liderR.rows[0];
 
-    // Etapa 1 = "Envio da ideia" (a primeira, por id_etapa)
-    const etapa1R = await client.query<{ id_etapa: number }>(
-      `SELECT id_etapa FROM etapa ORDER BY id_etapa ASC LIMIT 1`
-    );
-    if (!etapa1R.rows[0]) throw AppError.conflict("Nenhuma etapa cadastrada — rode o seed do banco primeiro");
-    const idEtapa1 = etapa1R.rows[0].id_etapa;
-
+    // 1) cria a equipe sem id_etapa_atual ainda (etapa é por-equipe agora,
+    //    e a etapa só pode existir depois que a equipe existe — mesma
+    //    referência circular resolvida no schema.sql e no seed.ts)
     const equipeR = await client.query<Equipe>(
-      `INSERT INTO equipe (nome_equipe, nome_ideia, descricao_ideia, area_ideia, estagio_ideia, como_conheceu, id_etapa_atual)
-       VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING *`,
+      `INSERT INTO equipe (nome_equipe, nome_ideia, descricao_ideia, area_ideia, estagio_ideia, como_conheceu)
+       VALUES ($1,$2,$3,$4,$5,$6) RETURNING *`,
       [
         input.nome_equipe,
         input.nome_ideia,
@@ -51,10 +48,27 @@ export async function registrarCadastroInicial(input: InscricaoInput) {
         input.area_ideia,
         input.estagio_ideia,
         input.como_conheceu ?? null,
-        idEtapa1,
       ]
     );
-    const equipe = equipeR.rows[0];
+    let equipe = equipeR.rows[0];
+
+    // 2) copia as 6 etapas padrão já pertencendo a essa equipe (ordem 1 a 6)
+    let idPrimeiraEtapa: number | null = null;
+    for (let i = 0; i < ETAPAS_PADRAO.length; i++) {
+      const { nome, descricao } = ETAPAS_PADRAO[i];
+      const etapaR = await client.query<{ id_etapa: number }>(
+        `INSERT INTO etapa (id_equipe, ordem, nome, descricao, padrao) VALUES ($1,$2,$3,$4,TRUE) RETURNING id_etapa`,
+        [equipe.id_equipe, i + 1, nome, descricao]
+      );
+      if (i === 0) idPrimeiraEtapa = etapaR.rows[0].id_etapa;
+    }
+
+    // 3) só agora fecha id_etapa_atual apontando pra Etapa 1 (ordem 1) DELA
+    const equipeAtualizadaR = await client.query<Equipe>(
+      `UPDATE equipe SET id_etapa_atual = $1 WHERE id_equipe = $2 RETURNING *`,
+      [idPrimeiraEtapa, equipe.id_equipe]
+    );
+    equipe = equipeAtualizadaR.rows[0];
 
     await client.query(
       `INSERT INTO equipe_usuario (id_equipe, id_usuario, papel) VALUES ($1,$2,'lider')`,

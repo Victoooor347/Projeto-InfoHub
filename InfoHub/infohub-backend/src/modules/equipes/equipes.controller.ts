@@ -56,6 +56,19 @@ export async function atualizarLinkPitch(req: Request, res: Response) {
   res.json(equipe);
 }
 
+export async function listarIntegrantes(req: Request, res: Response) {
+  const { id } = req.params as unknown as { id: number };
+
+  // aluno só enxerga os integrantes de uma equipe da qual ele participa
+  if (req.usuario!.perfil === "aluno") {
+    const papel = await papelDoUsuarioNaEquipe(req.usuario!.id_usuario, id);
+    if (!papel) throw AppError.forbidden("Você não participa desta equipe");
+  }
+
+  const integrantes = await service.listarIntegrantesDaEquipe(id);
+  res.json(integrantes);
+}
+
 export async function listarMentores(req: Request, res: Response) {
   const { id } = req.params as unknown as { id: number };
   const mentores = await service.listarMentoresDaEquipe(id);
@@ -73,4 +86,38 @@ export async function removerMentor(req: Request, res: Response) {
   const { id, idUsuario } = req.params as unknown as { id: number; idUsuario: number };
   const mentores = await service.removerMentor(id, idUsuario);
   res.json(mentores);
+}
+
+export async function listarEtapas(req: Request, res: Response) {
+  const { id } = req.params as unknown as { id: number };
+
+  if (req.usuario!.perfil === "aluno") {
+    const papel = await papelDoUsuarioNaEquipe(req.usuario!.id_usuario, id);
+    if (!papel) throw AppError.forbidden("Você não participa desta equipe");
+  }
+
+  const etapas = await service.listarEtapasDaEquipe(id);
+  res.json(etapas);
+}
+
+/**
+ * Decisão do InfoHub (WhatsApp): "a jornada padrão segue com 6 etapas,
+ * mas o mentor pode acrescentar etapas extras por equipe". Por isso, só
+ * quem é mentor DESTA equipe especificamente pode criar — mesmo critério
+ * já usado para "só o mentor pode alterar o prazo de uma tarefa"
+ * (usuarioEhMentorDaEquipe). Um admin sem vínculo de mentoria com essa
+ * equipe não pode, e um mentor de OUTRA equipe também não pode.
+ */
+export async function criarEtapa(req: Request, res: Response) {
+  const { id } = req.params as unknown as { id: number };
+  const { nome, descricao } = req.body as { nome: string; descricao: string };
+  const usuario = req.usuario!;
+
+  const ehMentorDestaEquipe = await service.usuarioEhMentorDaEquipe(usuario.id_usuario, id);
+  if (!ehMentorDestaEquipe) {
+    throw AppError.forbidden("Só um mentor desta equipe pode acrescentar etapas na jornada dela");
+  }
+
+  const etapa = await service.criarEtapaExtra(id, nome, descricao, usuario.id_usuario);
+  res.status(201).json(etapa);
 }

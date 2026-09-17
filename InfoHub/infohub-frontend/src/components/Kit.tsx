@@ -107,3 +107,40 @@ export function Pill({ children, className = "" }: { children: ReactNode; classN
     </span>
   );
 }
+
+export function TelaCarregando({ mensagem = "Carregando…" }: { mensagem?: string }) {
+  return (
+    <div className="flex flex-col items-center justify-center gap-3 py-24 text-text-soft">
+      <span
+        className="w-7 h-7 rounded-full border-2 border-paper-line border-t-accent-orange animate-spin"
+        aria-hidden
+      />
+      <p className="text-sm">{mensagem}</p>
+    </div>
+  );
+}
+
+/** Faixa de erro usada para falhas de comunicação com a API. */
+export function FaixaErro({
+  mensagem,
+  rotuloAcao,
+  onAcao,
+}: {
+  mensagem: string;
+  rotuloAcao?: string;
+  onAcao?: () => void;
+}) {
+  return (
+    <div
+      role="alert"
+      className="flex items-start gap-3 bg-brand-danger-soft text-brand-danger rounded-xl px-4 py-3 text-sm"
+    >
+      <span className="flex-1">{mensagem}</span>
+      {onAcao && rotuloAcao && (
+        <button onClick={onAcao} className="font-semibold hover:underline shrink-0" type="button">
+          {rotuloAcao}
+        </button>
+      )}
+    </div>
+  );
+}

@@ -61,8 +61,12 @@ src/
     env.ts        variáveis de ambiente validadas com Zod
     db.ts         pool de conexão do Postgres (pg) + helper query()
   db/
-    schema.sql     DDL completo (tabelas, enums, índices)
+    schema.sql     DDL completo (tabelas, enums, índices) — schema atual, do zero
+    etapasPadrao.ts  molde das 6 etapas padrão, copiado pra cada equipe nova
     migrate.ts      aplica schema.sql
+    migrate-002-etapas-por-equipe.ts  aplica a migração 002 (bancos já em produção)
+    migrations/
+      002_etapas_por_equipe.sql  migração real, testada (etapa global -> etapa por equipe)
     seed.ts         popula dados de demonstração
     reset.ts        dropa e recria o schema public
   middlewares/
@@ -75,6 +79,7 @@ src/
     cursos/ etapas/ statusTarefas/   tabelas de referência (somente leitura)
     equipes/          funil kanban, avançar etapa, mentores (N:N), link do pitch
     equipeUsuarios/    membros de cada equipe (líder/integrante)
+    equipeMentores/    todos os vínculos equipe↔mentor numa listagem só (evita N+1)
     tarefas/           CRUD de tarefas, status, prazo, entregáveis
     entregaveis/       listagem global (uso administrativo/relatórios)
     anotacoes/         anotações internas do mentor (nunca visíveis ao aluno)
@@ -100,7 +105,8 @@ Todas as rotas (exceto `/health`, `/auth/login` e `/inscricao`) exigem `Authoriz
 - `POST /api/inscricao` — formulário da Etapa 1 (RF-02); cria conta do líder, a equipe, e vincula colegas por e-mail (cria conta nova ou reaproveita uma existente, sem "aceitar convite")
 
 ### Referência (leitura)
-- `GET /api/cursos`, `GET /api/etapas`, `GET /api/status-tarefas`
+- `GET /api/cursos`, `GET /api/status-tarefas` — públicas
+- `GET /api/etapas` — só admin/mentor; lista TODA etapa de TODA equipe de uma vez (cada linha já vem com `id_equipe`) — não é mais um catálogo global fixo, ver decisão 8 abaixo
 
 ### Usuários (RF-03 — só admin)
 - `GET /api/usuarios?perfil=&ativo=`
@@ -113,12 +119,16 @@ Todas as rotas (exceto `/health`, `/auth/login` e `/inscricao`) exigem `Authoriz
 - `PATCH /api/equipes/:id/etapa` — `{ delta: 1 | -1 }` avança/retrocede (RF-09)
 - `PATCH /api/equipes/:id/pronto` — `{ pronto: boolean }` marca "Pronta para o InovAMF"
 - `PATCH /api/equipes/:id/link-pitch` — `{ link_pitch }` (admin/mentor, ou o próprio líder)
+- `GET /api/equipes/:id/integrantes` — integrantes com nome/e-mail e papel; é por aqui que o **aluno** descobre quem são os colegas e quem é o líder (ele não pode chamar `GET /usuarios`)
 - `GET /api/equipes/:id/mentores`
 - `POST /api/equipes/:id/mentores` — `{ id_usuario }` (só admin; usuário precisa ser admin ou mentor)
 - `DELETE /api/equipes/:id/mentores/:idUsuario`
+- `GET /api/equipes/:id/etapas` — jornada dessa equipe (aluno só vê a própria)
+- `POST /api/equipes/:id/etapas` — `{ nome, descricao }` acrescenta uma etapa extra ao final da jornada; **só o mentor DESTA equipe específica** (ver decisão 8)
 
 ### Membros
 - `GET /api/equipe-usuarios?id_equipe=` ou `?id_usuario=`
+- `GET /api/equipe-mentores?id_equipe=` — todos os vínculos equipe↔mentor de uma vez (aluno só recebe os das equipes dele); evita o N+1 de chamar `/equipes/:id/mentores` para cada equipe
 
 ### Tarefas
 - `GET /api/tarefas?id_equipe=&id_status=` — aluno só vê tarefas das próprias equipes
@@ -144,6 +154,7 @@ Tudo abaixo foi validado com o cliente ao longo do projeto (quadro branco + conv
 5. **Cadastro de colega só precisa de e-mail + curso, sem RA.** Se o e-mail já existe no sistema, a pessoa é adicionada direto na equipe nova, sem "aceitar convite"; se não existe, a conta já é criada com senha provisória (`trocar123`).
 6. **Sem número máximo de integrantes por equipe** (Q5) e **sem etapa pós-InovAMF** (Q6) — o funil termina na Etapa 6.
 7. **RF-03** (admin cria/edita/desativa contas de admin e mentor) está implementado — era um requisito do PDF que tinha ficado pendente no frontend mock.
+8. **Etapas dinâmicas por equipe.** Decisão do InfoHub via WhatsApp: "a jornada padrão segue com 6 etapas, mas o mentor pode acrescentar etapas extras por equipe". `etapa` deixou de ser um catálogo global fixo e passou a pertencer a cada equipe (`etapa.id_equipe`, `etapa.ordem`), com FK composta garantindo que uma equipe nunca aponte pra etapa de outra. Só o mentor **daquela equipe específica** (vínculo em `equipe_mentor`) pode criar etapa extra — nem um mentor de outra equipe, nem um admin sem vínculo. Ver `../etapas-dinamicas-implementacao.md` na raiz do projeto e a migração testada em `src/db/migrations/002_etapas_por_equipe.sql` (para bancos que já estavam em produção com o schema antigo).
 
 ## O que ainda falta para produção
 
@@ -151,9 +162,10 @@ Tudo abaixo foi validado com o cliente ao longo do projeto (quadro branco + conv
 - **Refresh token** — o JWT expira em 7 dias (`JWT_EXPIRES_IN`) sem renovação automática.
 - **Upload real de arquivo** — `entregavel.arquivo_url` guarda uma URL/nome; não há endpoint de upload binário (S3, disco, etc.) ainda.
 - **Rate limiting** e **logs estruturados** para produção.
-- Conectar o frontend (`infohub-frontend`) a esta API no lugar do `DataContext` mock, mantendo os mesmos tipos.
 
 ## Testado de ponta a ponta
 
 Antes de entregar, rodei o servidor contra um Postgres real e testei via `curl`:
 login (admin/mentor/aluno), `GET /auth/me`, listagem de equipes com/sem token, as 4 regras finas de permissão (admin não edita prazo / mentor edita / integrante não envia entregável / líder envia), múltiplos mentores por equipe (incluindo admin virando mentor, e rejeição de aluno como mentor), inscrição pública com auto-vínculo de colega (e-mail novo cria conta, e-mail existente reaproveita), RF-03 completo (criar → logar → desativar → login falha), 404 numa rota inexistente, e erro 422 de validação Zod.
+
+Depois da mudança de etapas dinâmicas: mentor da equipe cria etapa extra (201) / mentor de outra equipe tenta (403) / admin sem vínculo tenta (403); equipe avança de etapa passando da 6ª padrão pra uma extra; `PATCH /equipes/:id/pronto` rejeita (409) quando a equipe não está na última etapa da própria jornada e aceita quando está; tarefa/anotação com `id_etapa` de outra equipe é rejeitada (409) em vez de estourar um erro cru de FK; e a migração `002_etapas_por_equipe.sql` foi rodada de verdade contra um banco fixture reconstruído no schema antigo, com verificação de que os dados foram preservados e reapontados corretamente.

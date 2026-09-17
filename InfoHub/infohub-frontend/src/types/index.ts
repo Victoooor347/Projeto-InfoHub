@@ -1,4 +1,5 @@
-// Tipos derivados diretamente do schema em banco.sql
+// Tipos espelhando exatamente o que a API devolve (ver infohub-backend/src/db/schema.sql).
+// Nenhum deles inclui senha: o backend nunca expõe senha_hash.
 
 export type NomeCurso =
   | "Sistemas de Informação"
@@ -20,18 +21,31 @@ export type Perfil = "aluno" | "mentor" | "admin";
 export interface Usuario {
   id_usuario: number;
   nome: string;
-  telefone: string;
+  telefone: string | null;
   email: string;
-  senha: string;
   perfil: Perfil;
   id_curso: number | null;
   semestre: number | null;
+  ativo: boolean;
+  criado_em: string;
 }
 
+/**
+ * Etapa dentro da jornada de UMA equipe específica — não é mais um
+ * catálogo global fixo de 6 (ver infohub-backend/src/db/schema.sql,
+ * decisão 7). `ordem` posiciona a etapa na jornada dessa equipe;
+ * `padrao=true` para as 6 da cartilha, `padrao=false` para uma etapa
+ * extra que o mentor da equipe tiver criado.
+ */
 export interface Etapa {
   id_etapa: number;
+  id_equipe: number;
+  ordem: number;
   nome: string;
   descricao: string;
+  padrao: boolean;
+  criada_por: number | null;
+  criado_em: string;
 }
 
 export type AreaIdeia =
@@ -58,7 +72,13 @@ export interface Equipe {
   link_pitch: string | null;
   id_mentor: number | null;
   id_etapa_atual: number;
-  pronto_para_inovamf?: boolean;
+  pronto_para_inovamf: boolean;
+  criado_em: string;
+  /** Resolvidos pela API via JOIN — evitam uma chamada extra por equipe. */
+  etapa_atual_ordem: number;
+  etapa_atual_nome: string;
+  etapa_atual_padrao: boolean;
+  total_etapas: number;
 }
 
 export type Papel = "lider" | "integrante";
@@ -119,11 +139,10 @@ export interface Lembrete {
 }
 
 /**
- * Extensão do frontend (ainda não existe no banco.sql atual).
- * Esclarecido em conversa com o cliente: uma equipe pode ter mais de um
- * mentor/monitor ("pode ter mais de um"), enquanto o schema atual só modela
- * `equipe.id_mentor` como FK única. Até a tabela `equipe_mentor` ser criada
- * no banco real, mantemos essa relação N:N só no mock.
+ * Relação N:N entre equipe e mentores (tabela `equipe_mentor` no banco).
+ * Uma equipe pode ter mais de um mentor/monitor — `equipe.id_mentor` continua
+ * existindo apontando para o "mentor principal", por compatibilidade com o
+ * schema original do cliente.
  */
 export interface EquipeMentor {
   id_equipe: number;

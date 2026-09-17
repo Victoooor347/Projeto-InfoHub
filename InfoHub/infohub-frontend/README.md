@@ -1,18 +1,21 @@
 # InfoHub → InovAMF — Frontend
 
-Frontend do **Sistema de Acompanhamento da Jornada do Empreendedor**, feito com **React + TypeScript + Vite + Tailwind CSS v4**, com dados **mockados** (nenhum backend real é necessário para rodar).
+Frontend do **Sistema de Acompanhamento da Jornada do Empreendedor**, feito com **React + TypeScript + Vite + Tailwind CSS v4**.
 
-Os dados mock foram criados a partir das tabelas do `banco.sql` enviado (cursos, usuario, etapa, equipe, equipe_usuario, status_tarefa, tarefa, entregavel, anotacoes, lembrete), então a estrutura de tipos do frontend (`src/types/index.ts`) já reflete o schema do banco — quando o backend real existir, basta trocar o `DataContext` por chamadas de API mantendo os mesmos tipos.
+Conectado a uma API real (ver [`../infohub-backend`](../infohub-backend)) — **precisa do backend rodando** para funcionar; não há mais dados mockados neste projeto (o antigo `src/data/mockData.ts` foi removido quando a conexão com a API foi feita).
 
 ## Como rodar o projeto
 
-Pré-requisitos: **Node.js 18+** (recomendado 20+) e **npm**.
+Pré-requisitos: **Node.js 18+**, e o [backend já rodando](../infohub-backend/README.md) em `http://localhost:3333`.
 
 ```bash
 # 1. instalar dependências
 npm install
 
-# 2. rodar em modo desenvolvimento
+# 2. copiar o .env de exemplo (já aponta pro backend local, normalmente não precisa mexer)
+cp .env.example .env
+
+# 3. rodar em modo desenvolvimento
 npm run dev
 ```
 
@@ -25,9 +28,9 @@ npm run build      # gera a versão de produção em /dist
 npm run preview    # serve a versão de produção localmente
 ```
 
-## Login (dados mockados)
+## Login
 
-Na tela de login existe um bloco **"Acesso rápido de demonstração"** com botões prontos. Se preferir digitar manualmente, use:
+Digite e-mail e senha de uma das contas de demonstração (criadas pelo `db:seed` do backend):
 
 | Perfil | E-mail | Senha |
 |---|---|---|
@@ -36,27 +39,27 @@ Na tela de login existe um bloco **"Acesso rápido de demonstração"** com bot�
 | Aluno (líder de equipe) | `bruno.kellermann@aluno.amf.br` | `aluno123` |
 | Aluna (integrante, sem permissão de envio) | `camila.restelatto@aluno.amf.br` | `aluno123` |
 
-Você também pode clicar em **"Inscrever minha equipe"** na tela de login para simular o fluxo de um aluno novo preenchendo o formulário inicial (isso cria a conta e a equipe automaticamente, como pede o requisito RF-02).
-
-Todas as outras contas de alunos/mentores estão em `src/data/mockData.ts`, todas com a senha `aluno123` (alunos) ou `mentor123` (mentores).
+Você também pode clicar em **"Inscrever minha equipe"** na tela de login para criar uma conta e equipe novas de verdade (formulário inicial, RF-02).
 
 ## Estrutura do projeto
 
 ```
 src/
-  types/           tipos TypeScript espelhando o banco.sql
-  data/mockData.ts dados mock (seed) de todas as tabelas
-  store/           "backend" em memória (DataContext) + autenticação (AuthContext)
+  types/           tipos TypeScript espelhando as respostas da API
+  services/
+    http.ts        cliente HTTP: base URL, token JWT, tratamento de erro
+    api.ts          uma função tipada por endpoint da API
+  store/           AuthContext (login/sessão) + DataContext (dados vindos da API)
   utils/           funções auxiliares (formatação de datas, status, joins entre tabelas)
   components/      componentes reutilizáveis (StageRail, StatusBadge, Kit de UI, etc.)
-  layouts/         casca de navegação do admin e do aluno
+  layouts/         casca de navegação do admin e do aluno (com estados de carregamento/erro)
   pages/
     LoginPage.tsx
     InscricaoPage.tsx        formulário inicial (Etapa 1 / RF-02 a RF-05)
     admin/
       AdminDashboardPage.tsx     visão geral e KPIs (RF-22)
       AdminEquipesPage.tsx       funil/kanban com busca e filtros (RF-06, RF-07)
-      AdminEquipeDetalhePage.tsx detalhe da equipe: tarefas, entregáveis, anotações (RF-08 a RF-20)
+      AdminEquipeDetalhePage.tsx detalhe da equipe: tarefas, entregáveis, anotações, etapas extras
       AdminTarefasPage.tsx       lista de tarefas com filtros
       AdminRelatoriosPage.tsx    relatório consolidado + exportação CSV (RF-23, RF-24)
     aluno/
@@ -65,15 +68,14 @@ src/
       AlunoTarefaDetalhePage.tsx envio de entregável + histórico de versões (RF-14, RF-16)
 ```
 
-## O que já está funcionando (só frontend, sem backend)
+## O que já está funcionando
 
-- Login mockado por perfil (`admin`, `mentor`, `aluno`), com proteção de rotas por perfil.
-- Formulário de inscrição inicial, criando conta + equipe automaticamente.
-- Painel do administrador: funil kanban das 6 etapas, busca/filtros, avançar/retroceder etapa de uma equipe, criar tarefas, aprovar/reprovar entregas, registrar anotações internas, disparar lembrete manual.
+- Login real (JWT) por perfil (`admin`, `mentor`, `aluno`), com sessão restaurada ao recarregar a página e proteção de rotas.
+- Formulário de inscrição inicial, criando conta + equipe de verdade no banco.
+- Painel do administrador: funil kanban, busca/filtros, avançar/retroceder etapa, criar tarefas, aprovar/reprovar entregas, registrar anotações internas, disparar lembrete manual, múltiplos mentores por equipe.
 - Dashboard com indicadores gerais e relatório exportável em CSV.
 - Área do aluno: acompanhar a etapa atual da equipe (mesmo em mais de uma equipe), ver tarefas pendentes/atrasadas/aprovadas, enviar entregável por arquivo ou link (ex.: pitch no YouTube), com histórico de versões.
-
-Como pedido, **todos os dados vivem em memória** (Context API) — ao dar refresh na página, os dados voltam ao estado inicial do mock. Isso é intencional nesta primeira entrega ("só preciso do frontend funcionando"); quando o backend estiver pronto, os `fetch`/`axios` substituem as funções de `src/store/DataContext.tsx` mantendo a mesma interface usada pelas páginas.
+- **Etapas dinâmicas por equipe**: a jornada padrão tem 6 etapas, mas o mentor de cada equipe pode acrescentar etapas extras só para ela (formulário no detalhe da equipe, visível só pra quem é mentor daquela equipe específica). O Kanban agrupa pelas 6 etapas padrão (nome igual pra todo mundo) mais uma coluna final "Além da jornada padrão" pra quem já está em etapa extra — ver `../etapas-dinamicas-implementacao.md` na raiz do projeto para os detalhes dessa decisão de design.
 
 ## Marca
 
@@ -103,7 +105,5 @@ As perguntas da seção 9 do PDF de requisitos foram respondidas pelo cliente (q
 
 ## Próximos passos sugeridos
 
-- Conectar a um backend real (REST ou GraphQL) substituindo `DataContext`.
-- Autenticação real com hash de senha e sessão/JWT.
-- Envio de e-mails reais (RF-17 a RF-19) via serviço transacional (Resend + Gmail, conforme comentário no `banco.sql`).
-- Upload de arquivo real (hoje o input de arquivo só registra o nome do arquivo escolhido, sem enviar bytes a lugar nenhum).
+- Upload de arquivo real (hoje o input de arquivo manda o nome/link pra API, mas não há envio de binário pra um storage de verdade).
+- Envio de e-mails reais (RF-17 a RF-19) via serviço transacional (Resend + Gmail, conforme comentário no `banco.sql`) — hoje o backend só registra o lembrete, não dispara e-mail.

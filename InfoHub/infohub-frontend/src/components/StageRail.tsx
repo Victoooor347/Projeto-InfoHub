@@ -2,19 +2,26 @@ import type { Etapa } from "../types";
 
 interface StageRailProps {
   etapas: Etapa[];
-  etapaAtual: number;
+  /** posição (campo `ordem`) da etapa atual dentro da jornada DESSA equipe — não é mais um id_etapa global */
+  ordemAtual: number;
   size?: "sm" | "md";
   pronto?: boolean;
 }
 
 /**
- * Trilho horizontal com os 6 nós da jornada InfoHub -> InovAMF.
+ * Trilho horizontal com os nós da jornada de UMA equipe.
  * Elemento de assinatura visual do produto: reaparece no kanban,
  * no detalhe da equipe e na área do aluno para reforçar "em que
  * ponto do funil" cada equipe está.
+ *
+ * Desde que etapa passou a pertencer a cada equipe (o mentor pode
+ * acrescentar etapas extras além das 6 padrão), a jornada pode ter
+ * tamanhos diferentes por equipe — por isso a posição é sempre por
+ * `ordem` (1, 2, 3...), nunca por `id_etapa` (que é só um id técnico,
+ * sem significado de posição quando comparado entre equipes diferentes).
  */
-export function StageRail({ etapas, etapaAtual, size = "md", pronto }: StageRailProps) {
-  const ordenadas = [...etapas].sort((a, b) => a.id_etapa - b.id_etapa);
+export function StageRail({ etapas, ordemAtual, size = "md", pronto }: StageRailProps) {
+  const ordenadas = [...etapas].sort((a, b) => a.ordem - b.ordem);
   const isSm = size === "sm";
 
   return (
@@ -27,13 +34,13 @@ export function StageRail({ etapas, etapaAtual, size = "md", pronto }: StageRail
         <div
           className="absolute left-0 top-1/2 -translate-y-1/2 h-[2px] gradient-brand transition-all duration-500"
           style={{
-            width: `${(Math.max(0, etapaAtual - 1) / (ordenadas.length - 1)) * 100}%`,
+            width: `${(Math.max(0, ordemAtual - 1) / Math.max(1, ordenadas.length - 1)) * 100}%`,
           }}
           aria-hidden
         />
         {ordenadas.map((etapa) => {
-          const concluida = etapa.id_etapa < etapaAtual;
-          const atual = etapa.id_etapa === etapaAtual;
+          const concluida = etapa.ordem < ordemAtual;
+          const atual = etapa.ordem === ordemAtual;
           return (
             <div key={etapa.id_etapa} className="relative z-10 flex flex-col items-center group">
               <div
@@ -50,7 +57,7 @@ export function StageRail({ etapas, etapaAtual, size = "md", pronto }: StageRail
                     : "bg-white border-paper-line text-text-faint",
                 ].join(" ")}
               >
-                {etapa.id_etapa}
+                {etapa.ordem}
               </div>
               {!isSm && (
                 <span
@@ -60,6 +67,7 @@ export function StageRail({ etapas, etapaAtual, size = "md", pronto }: StageRail
                   ].join(" ")}
                 >
                   {etapa.nome.split(" – ")[0]}
+                  {!etapa.padrao && <span className="block text-accent-orange">extra</span>}
                 </span>
               )}
             </div>

@@ -1,7 +1,9 @@
 import { NavLink, Outlet, useNavigate } from "react-router-dom";
 import { Home, ListChecks, LogOut } from "lucide-react";
 import { Logo } from "../components/Logo";
+import { FaixaErro, TelaCarregando } from "../components/Kit";
 import { useAuth } from "../store/AuthContext";
+import { useData } from "../store/DataContext";
 
 const navItems = [
   { to: "/aluno", label: "Minha jornada", icon: Home, end: true },
@@ -10,6 +12,7 @@ const navItems = [
 
 export function AlunoLayout() {
   const { usuarioAtual, sair } = useAuth();
+  const { carregando, erroCarregamento, erroAcao, limparErroAcao, recarregar } = useData();
   const navigate = useNavigate();
 
   function handleSair() {
@@ -63,7 +66,15 @@ export function AlunoLayout() {
       </header>
 
       <main className="max-w-3xl mx-auto px-4 py-6">
-        <Outlet />
+        {(erroCarregamento || erroAcao) && (
+          <div className="mb-4 space-y-2">
+            {erroCarregamento && (
+              <FaixaErro mensagem={erroCarregamento} rotuloAcao="tentar de novo" onAcao={recarregar} />
+            )}
+            {erroAcao && <FaixaErro mensagem={erroAcao} rotuloAcao="fechar" onAcao={limparErroAcao} />}
+          </div>
+        )}
+        {carregando ? <TelaCarregando mensagem="Carregando suas equipes…" /> : <Outlet />}
       </main>
 
       <nav className="fixed bottom-0 inset-x-0 z-20 bg-white border-t border-paper-line flex md:hidden">

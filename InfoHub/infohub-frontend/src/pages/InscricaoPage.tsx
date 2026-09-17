@@ -1,9 +1,10 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { ArrowLeft, Plus, Trash2, CheckCircle2 } from "lucide-react";
 import { Logo } from "../components/Logo";
 import { useData } from "../store/DataContext";
 import { useAuth } from "../store/AuthContext";
+import { mensagemDeErro } from "../services/http";
 import { PrimaryButton, Card } from "../components/Kit";
 import type { AreaIdeia, ComoConheceu, EstagioIdeia } from "../types";
 
@@ -19,7 +20,7 @@ interface Colega {
 
 export function InscricaoPage() {
   const { cursos, registrarCadastroInicial } = useData();
-  const { entrarComo } = useAuth();
+  const { entrarComToken } = useAuth();
   const navigate = useNavigate();
 
   const [nome, setNome] = useState("");
@@ -38,7 +39,15 @@ export function InscricaoPage() {
   const [comoConheceu, setComoConheceu] = useState<ComoConheceu | "">("");
 
   const [erro, setErro] = useState<string | null>(null);
+  const [enviando, setEnviando] = useState(false);
   const [enviado, setEnviado] = useState(false);
+
+  // A lista de cursos vem da API, então pode chegar depois do primeiro render:
+  // quando chegar, garante que o curso selecionado é um id que existe mesmo.
+  useEffect(() => {
+    if (cursos.length === 0) return;
+    if (!cursos.some((c) => c.id_curso === idCurso)) setIdCurso(cursos[0].id_curso);
+  }, [cursos, idCurso]);
 
   function addColega() {
     setColegas((prev) => [...prev, { nome: "", email: "", idCurso: cursos[0]?.id_curso ?? 1 }]);
@@ -52,35 +61,44 @@ export function InscricaoPage() {
     setColegas((prev) => prev.map((c, i) => (i === index ? { ...c, ...patch } : c)));
   }
 
-  function handleSubmit(e: React.FormEvent) {
+  async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (!nome || !email || !senha || !telefone || !nomeEquipe || !nomeIdeia || !descricaoIdeia) {
       setErro("Preencha todos os campos obrigatórios antes de enviar (RF-04).");
       return;
     }
     setErro(null);
+    setEnviando(true);
 
-    const { usuario } = registrarCadastroInicial({
-      nomeLider: nome,
-      telefone,
-      email,
-      senha,
-      idCurso,
-      semestre,
-      colegas,
-      nomeEquipe,
-      nomeIdeia,
-      descricaoIdeia,
-      areaIdeia,
-      estagioIdeia,
-      comoConheceu: comoConheceu || null,
-    });
+    try {
+      // POST /api/inscricao cria usuário + equipe + vínculos numa transação só
+      // e já devolve o token do líder, então o aluno cai logado na área dele.
+      const { token, usuario } = await registrarCadastroInicial({
+        nomeLider: nome,
+        telefone,
+        email,
+        senha,
+        idCurso,
+        semestre,
+        colegas,
+        nomeEquipe,
+        nomeIdeia,
+        descricaoIdeia,
+        areaIdeia,
+        estagioIdeia,
+        comoConheceu: comoConheceu || null,
+      });
 
-    setEnviado(true);
-    setTimeout(() => {
-      entrarComo(usuario);
-      navigate("/aluno");
-    }, 1400);
+      setEnviado(true);
+      setTimeout(() => {
+        entrarComToken(token, usuario);
+        navigate("/aluno");
+      }, 1400);
+    } catch (falha) {
+      setErro(mensagemDeErro(falha));
+    } finally {
+      setEnviando(false);
+    }
   }
 
   if (enviado) {
@@ -290,8 +308,8 @@ export function InscricaoPage() {
 
           {erro && <p className="text-sm text-brand-danger">{erro}</p>}
 
-          <PrimaryButton type="submit" className="w-full sm:w-auto">
-            Enviar minha ideia
+          <PrimaryButton type="submit" disabled={enviando} className="w-full sm:w-auto">
+            {enviando ? "Enviando…" : "Enviar minha ideia"}
           </PrimaryButton>
         </form>
       </main>

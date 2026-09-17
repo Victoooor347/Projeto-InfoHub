@@ -1,6 +1,8 @@
 import { BrowserRouter, Navigate, Route, Routes } from "react-router-dom";
-import { DataProvider } from "./store/DataContext";
+// AuthProvider por fora: o DataProvider precisa saber quem está logado para
+// decidir quais rotas da API pode chamar (aluno x admin/mentor).
 import { AuthProvider } from "./store/AuthContext";
+import { DataProvider } from "./store/DataContext";
 import { ProtectedRoute } from "./components/ProtectedRoute";
 import { LoginPage } from "./pages/LoginPage";
 import { InscricaoPage } from "./pages/InscricaoPage";
@@ -17,8 +19,8 @@ import { AlunoTarefaDetalhePage } from "./pages/aluno/AlunoTarefaDetalhePage";
 
 export default function App() {
   return (
-    <DataProvider>
-      <AuthProvider>
+    <AuthProvider>
+      <DataProvider>
         <BrowserRouter>
           <Routes>
             <Route path="/" element={<Navigate to="/login" replace />} />
@@ -56,7 +58,7 @@ export default function App() {
             <Route path="*" element={<Navigate to="/login" replace />} />
           </Routes>
         </BrowserRouter>
-      </AuthProvider>
-    </DataProvider>
+      </DataProvider>
+    </AuthProvider>
   );
 }

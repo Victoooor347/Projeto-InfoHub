@@ -4,8 +4,20 @@ import { useData } from "../../store/DataContext";
 import { Card, Kpi, Pill } from "../../components/Kit";
 import { getStatusDescricao, isPrazoVencido, formatarData, equipeProntaParaInovAMF } from "../../utils/selectors";
 
+// Mesmo catálogo usado no Kanban (AdminEquipesPage) — os 6 nomes padrão
+// são os mesmos pra qualquer equipe, então servem de rótulo fixo aqui
+// também. Ver comentário completo em AdminEquipesPage.tsx.
+const NOMES_ETAPAS_PADRAO = [
+  "Envio da ideia",
+  "Contato com a equipe",
+  "Encontro 1 – Entendendo a ideia",
+  "Encontro 2 – Proposta de valor",
+  "Encontro 3 – Modelo de negócio",
+  "Encontro 4 – Pitch e inscrição",
+];
+
 export function AdminDashboardPage() {
-  const { equipes, etapas, tarefas, statusTarefa, usuarios, equipeMentores } = useData();
+  const { equipes, tarefas, statusTarefa, usuarios, equipeMentores } = useData();
 
   const equipesAtivas = equipes.length;
   const tarefasAtrasadas = tarefas.filter(
@@ -14,10 +26,16 @@ export function AdminDashboardPage() {
   const prontasParaInovAMF = equipes.filter(equipeProntaParaInovAMF);
   const equipesSemMentor = equipes.filter((eq) => !equipeMentores.some((em) => em.id_equipe === eq.id_equipe));
 
-  const distribuicao = etapas.map((etapa) => ({
-    etapa,
-    total: equipes.filter((eq) => eq.id_etapa_atual === etapa.id_etapa).length,
-  }));
+  const distribuicao = [
+    ...NOMES_ETAPAS_PADRAO.map((nome, i) => ({
+      nome,
+      total: equipes.filter((eq) => eq.etapa_atual_ordem === i + 1).length,
+    })),
+    {
+      nome: "Além da jornada padrão",
+      total: equipes.filter((eq) => eq.etapa_atual_ordem > NOMES_ETAPAS_PADRAO.length).length,
+    },
+  ];
   const maxDistribuicao = Math.max(1, ...distribuicao.map((d) => d.total));
 
   return (
@@ -58,10 +76,9 @@ export function AdminDashboardPage() {
             </Link>
           </div>
           <div className="mt-5 space-y-3.5">
-            {distribuicao.map(({ etapa, total }) => (
-              <div key={etapa.id_etapa} className="flex items-center gap-3">
-                <span className="w-6 font-mono text-xs text-text-faint">{etapa.id_etapa}</span>
-                <span className="w-40 sm:w-52 text-sm text-ink truncate">{etapa.nome.split(" – ")[0]}</span>
+            {distribuicao.map(({ nome, total }) => (
+              <div key={nome} className="flex items-center gap-3">
+                <span className="w-40 sm:w-52 text-sm text-ink truncate">{nome.split(" – ")[0]}</span>
                 <div className="flex-1 h-2.5 bg-paper-alt rounded-full overflow-hidden">
                   <div
                     className="h-full gradient-brand rounded-full transition-all"
@@ -145,7 +162,7 @@ export function AdminDashboardPage() {
                 >
                   <div>
                     <p className="text-sm font-medium text-ink">{eq.nome_equipe}</p>
-                    <p className="text-xs text-text-soft">Etapa {eq.id_etapa_atual}</p>
+                    <p className="text-xs text-text-soft">Etapa {eq.etapa_atual_ordem} de {eq.total_etapas}</p>
                   </div>
                   <ArrowUpRight size={14} className="text-text-faint" />
                 </Link>

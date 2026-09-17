@@ -1,32 +1,22 @@
-import { createContext, useContext, useMemo, useState, type ReactNode } from "react";
-import {
-  cursos as seedCursos,
-  etapas as seedEtapas,
-  statusTarefa as seedStatusTarefa,
-  usuarios as seedUsuarios,
-  equipes as seedEquipes,
-  equipeUsuarios as seedEquipeUsuarios,
-  tarefas as seedTarefas,
-  entregaveis as seedEntregaveis,
-  anotacoes as seedAnotacoes,
-  lembretes as seedLembretes,
-  equipeMentores as seedEquipeMentores,
-} from "../data/mockData";
+import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
+import * as apiInfoHub from "../services/api";
+import { mensagemDeErro } from "../services/http";
+import { useAuth } from "./AuthContext";
 import type {
-  Curso,
-  Etapa,
-  StatusTarefa,
-  Usuario,
-  Equipe,
-  EquipeUsuario,
-  Tarefa,
-  Entregavel,
   Anotacao,
-  Lembrete,
-  EquipeMentor,
   AreaIdeia,
-  EstagioIdeia,
   ComoConheceu,
+  Curso,
+  Entregavel,
+  Equipe,
+  EquipeMentor,
+  EquipeUsuario,
+  EstagioIdeia,
+  Etapa,
+  Lembrete,
+  StatusTarefa,
+  Tarefa,
+  Usuario,
 } from "../types";
 
 interface Colega {
@@ -64,223 +54,398 @@ interface DataContextValue {
   lembretes: Lembrete[];
   equipeMentores: EquipeMentor[];
 
-  avancarEtapa: (idEquipe: number, delta: 1 | -1) => void;
-  criarTarefa: (t: Omit<Tarefa, "id_tarefa" | "id_status"> & { id_status?: number }) => void;
-  atualizarStatusTarefa: (idTarefa: number, idStatus: number) => void;
-  atualizarPrazoTarefa: (idTarefa: number, novaData: string) => void;
-  enviarEntregavel: (idTarefa: number, idUsuario: number, arquivoNome: string, tipo: string) => void;
-  adicionarAnotacao: (a: Omit<Anotacao, "id_anotacao" | "data_registro">) => void;
-  dispararLembreteManual: (idTarefa: number) => void;
-  registrarCadastroInicial: (input: NovoCadastroInput) => { usuario: Usuario; equipe: Equipe };
-  criarUsuarioAdminOuMentor: (u: Omit<Usuario, "id_usuario" | "senha"> & { senha?: string }) => void;
-  atualizarLinkPitch: (idEquipe: number, link: string) => void;
-  adicionarMentor: (idEquipe: number, idUsuario: number) => void;
-  removerMentor: (idEquipe: number, idUsuario: number) => void;
+  /** true durante a carga dos dados do usuário logado. */
+  carregando: boolean;
+  /** Falha ao carregar os dados (API fora do ar, por exemplo). */
+  erroCarregamento: string | null;
+  /** Falha na última ação de escrita — exibida como faixa nos layouts. */
+  erroAcao: string | null;
+  limparErroAcao: () => void;
+  recarregar: () => Promise<void>;
+
+  avancarEtapa: (idEquipe: number, delta: 1 | -1) => Promise<void>;
+  criarTarefa: (t: {
+    titulo: string;
+    descricao: string;
+    data_limite: string;
+    id_equipe: number;
+    id_etapa: number;
+  }) => Promise<void>;
+  atualizarStatusTarefa: (idTarefa: number, idStatus: number) => Promise<void>;
+  atualizarPrazoTarefa: (idTarefa: number, novaData: string) => Promise<void>;
+  enviarEntregavel: (idTarefa: number, idUsuario: number, arquivoNome: string, tipo: string) => Promise<void>;
+  adicionarAnotacao: (a: Omit<Anotacao, "id_anotacao" | "data_registro">) => Promise<void>;
+  dispararLembreteManual: (idTarefa: number) => Promise<void>;
+  marcarProntoParaInovAMF: (idEquipe: number, pronto: boolean) => Promise<void>;
+  registrarCadastroInicial: (
+    input: NovoCadastroInput
+  ) => Promise<{ token: string; usuario: Usuario; equipe: Equipe }>;
+  criarUsuarioAdminOuMentor: (u: {
+    nome: string;
+    email: string;
+    telefone?: string | null;
+    senha: string;
+    perfil: "admin" | "mentor";
+  }) => Promise<void>;
+  atualizarLinkPitch: (idEquipe: number, link: string) => Promise<void>;
+  adicionarMentor: (idEquipe: number, idUsuario: number) => Promise<void>;
+  removerMentor: (idEquipe: number, idUsuario: number) => Promise<void>;
+  criarEtapaExtra: (idEquipe: number, nome: string, descricao: string) => Promise<void>;
 }
 
 const DataContext = createContext<DataContextValue | null>(null);
 
-let nextIds = {
-  usuario: 1000,
-  equipe: 1000,
-  equipeUsuario: 1000,
-  tarefa: 1000,
-  entregavel: 1000,
-  anotacao: 1000,
-  lembrete: 1000,
-};
+/** Junta listas de usuários sem repetir ninguém (a mesma pessoa pode vir de várias equipes). */
+function mesclarUsuarios(...listas: Usuario[][]): Usuario[] {
+  const mapa = new Map<number, Usuario>();
+  for (const lista of listas) {
+    for (const u of lista) mapa.set(u.id_usuario, u);
+  }
+  return [...mapa.values()].sort((a, b) => a.nome.localeCompare(b.nome));
+}
 
 export function DataProvider({ children }: { children: ReactNode }) {
-  const [cursos] = useState<Curso[]>(seedCursos);
-  const [etapas] = useState<Etapa[]>(seedEtapas);
-  const [statusTarefa] = useState<StatusTarefa[]>(seedStatusTarefa);
-  const [usuarios, setUsuarios] = useState<Usuario[]>(seedUsuarios);
-  const [equipes, setEquipes] = useState<Equipe[]>(seedEquipes);
-  const [equipeUsuarios, setEquipeUsuarios] = useState<EquipeUsuario[]>(seedEquipeUsuarios);
-  const [tarefas, setTarefas] = useState<Tarefa[]>(seedTarefas);
-  const [entregaveis, setEntregaveis] = useState<Entregavel[]>(seedEntregaveis);
-  const [anotacoes, setAnotacoes] = useState<Anotacao[]>(seedAnotacoes);
-  const [lembretes, setLembretes] = useState<Lembrete[]>(seedLembretes);
-  const [equipeMentores, setEquipeMentores] = useState<EquipeMentor[]>(seedEquipeMentores);
+  const { usuarioAtual, restaurandoSessao } = useAuth();
 
-  function avancarEtapa(idEquipe: number, delta: 1 | -1) {
-    setEquipes((prev) =>
-      prev.map((eq) => {
-        if (eq.id_equipe !== idEquipe) return eq;
-        const proxima = Math.min(6, Math.max(1, eq.id_etapa_atual + delta));
-        return {
-          ...eq,
-          id_etapa_atual: proxima,
-          pronto_para_inovamf: proxima === 6 ? eq.pronto_para_inovamf : false,
-        };
+  const [cursos, setCursos] = useState<Curso[]>([]);
+  const [etapas, setEtapas] = useState<Etapa[]>([]);
+  const [statusTarefa, setStatusTarefa] = useState<StatusTarefa[]>([]);
+  const [usuarios, setUsuarios] = useState<Usuario[]>([]);
+  const [equipes, setEquipes] = useState<Equipe[]>([]);
+  const [equipeUsuarios, setEquipeUsuarios] = useState<EquipeUsuario[]>([]);
+  const [tarefas, setTarefas] = useState<Tarefa[]>([]);
+  const [entregaveis, setEntregaveis] = useState<Entregavel[]>([]);
+  const [anotacoes, setAnotacoes] = useState<Anotacao[]>([]);
+  const [lembretes, setLembretes] = useState<Lembrete[]>([]);
+  const [equipeMentores, setEquipeMentores] = useState<EquipeMentor[]>([]);
+
+  const [carregando, setCarregando] = useState(true);
+  const [erroCarregamento, setErroCarregamento] = useState<string | null>(null);
+  const [erroAcao, setErroAcao] = useState<string | null>(null);
+
+  const limparErroAcao = useCallback(() => setErroAcao(null), []);
+
+  /**
+   * Cursos e status são rotas públicas na API: a tela de login e o
+   * formulário de inscrição precisam deles antes de existir qualquer sessão.
+   * Etapa NÃO é mais pública — ela pertence a cada equipe agora, então só
+   * dá pra saber quais existem depois de saber quem está logado (ver
+   * carregarComoAdmin/carregarComoAluno abaixo).
+   */
+  useEffect(() => {
+    let cancelado = false;
+    Promise.all([apiInfoHub.cursos.listar(), apiInfoHub.statusTarefas.listar()])
+      .then(([c, s]) => {
+        if (cancelado) return;
+        setCursos(c);
+        setStatusTarefa(s);
       })
+      .catch((erro) => {
+        if (!cancelado) setErroCarregamento(mensagemDeErro(erro));
+      });
+    return () => {
+      cancelado = true;
+    };
+  }, []);
+
+  /** Admin e mentor acompanham o sistema inteiro, então usam as rotas de listagem geral. */
+  const carregarComoAdmin = useCallback(async () => {
+    const [
+      usuariosApi,
+      equipesApi,
+      vinculosApi,
+      mentoresApi,
+      tarefasApi,
+      entregaveisApi,
+      anotacoesApi,
+      lembretesApi,
+      etapasApi,
+    ] = await Promise.all([
+      apiInfoHub.usuarios.listar(),
+      apiInfoHub.equipes.listar(),
+      apiInfoHub.equipeUsuarios.listar(),
+      apiInfoHub.equipeMentores.listar(),
+      apiInfoHub.tarefas.listar(),
+      apiInfoHub.entregaveis.listar(),
+      apiInfoHub.anotacoes.listar(),
+      apiInfoHub.lembretes.listar(),
+      apiInfoHub.etapas.listarTodas(),
+    ]);
+
+    setUsuarios(usuariosApi);
+    setEquipes(equipesApi);
+    setEquipeUsuarios(vinculosApi);
+    setEquipeMentores(mentoresApi);
+    setTarefas(tarefasApi);
+    setEntregaveis(entregaveisApi);
+    setAnotacoes(anotacoesApi);
+    setLembretes(lembretesApi);
+    setEtapas(etapasApi);
+  }, []);
+
+  /**
+   * O aluno não pode listar usuários nem equipes em geral (a API responde 403),
+   * então o estado é montado só com o que ele tem direito de ver: as equipes
+   * das quais participa, os colegas dessas equipes e as tarefas delas.
+   * Etapas também são carregadas só das equipes dele (GET /etapas geral é
+   * admin/mentor only — aluno usa GET /equipes/:id/etapas por equipe).
+   */
+  const carregarComoAluno = useCallback(async (usuario: Usuario) => {
+    const meusVinculos = await apiInfoHub.equipeUsuarios.listar();
+    const idsEquipes = [...new Set(meusVinculos.map((v) => v.id_equipe))];
+
+    const [equipesApi, integrantesPorEquipe, mentoresApi, tarefasApi, etapasPorEquipe] = await Promise.all([
+      Promise.all(idsEquipes.map((id) => apiInfoHub.equipes.buscarPorId(id))),
+      Promise.all(idsEquipes.map((id) => apiInfoHub.equipes.listarIntegrantes(id))),
+      apiInfoHub.equipeMentores.listar(),
+      apiInfoHub.tarefas.listar(),
+      Promise.all(idsEquipes.map((id) => apiInfoHub.equipes.listarEtapas(id))),
+    ]);
+
+    const integrantes = integrantesPorEquipe.flat();
+
+    setEquipes(equipesApi);
+    setEquipeUsuarios(
+      integrantes.map((i) => ({
+        id_equipe_usuario: i.id_equipe_usuario,
+        id_equipe: i.id_equipe,
+        id_usuario: i.usuario.id_usuario,
+        papel: i.papel,
+      }))
     );
-  }
-
-  function criarTarefa(t: Omit<Tarefa, "id_tarefa" | "id_status"> & { id_status?: number }) {
-    const id_tarefa = nextIds.tarefa++;
-    setTarefas((prev) => [
-      ...prev,
-      { ...t, id_tarefa, id_status: t.id_status ?? 1 },
-    ]);
-  }
-
-  function atualizarStatusTarefa(idTarefa: number, idStatus: number) {
-    setTarefas((prev) => prev.map((t) => (t.id_tarefa === idTarefa ? { ...t, id_status: idStatus } : t)));
-  }
-
-  // Esclarecido com o cliente: apenas o mentor pode alterar o prazo de uma tarefa já criada.
-  // A checagem de perfil acontece na tela (AdminEquipeDetalhePage); esta função só aplica a mudança.
-  function atualizarPrazoTarefa(idTarefa: number, novaData: string) {
-    setTarefas((prev) => prev.map((t) => (t.id_tarefa === idTarefa ? { ...t, data_limite: novaData } : t)));
-  }
-
-  function enviarEntregavel(idTarefa: number, idUsuario: number, arquivoNome: string, tipo: string) {
-    const id_entregavel = nextIds.entregavel++;
-    setEntregaveis((prev) => [
-      ...prev,
-      {
-        id_entregavel,
-        arquivo_url: `/mock-files/${arquivoNome}`,
-        tipo,
-        data_envio: new Date().toISOString(),
-        id_tarefa: idTarefa,
-        id_usuario: idUsuario,
-      },
-    ]);
-    atualizarStatusTarefa(idTarefa, 3); // Entregue
-  }
-
-  function adicionarAnotacao(a: Omit<Anotacao, "id_anotacao" | "data_registro">) {
-    const id_anotacao = nextIds.anotacao++;
-    setAnotacoes((prev) => [
-      { ...a, id_anotacao, data_registro: new Date().toISOString() },
-      ...prev,
-    ]);
-  }
-
-  function dispararLembreteManual(idTarefa: number) {
-    const id_lembrete = nextIds.lembrete++;
-    setLembretes((prev) => [
-      ...prev,
-      {
-        id_lembrete,
-        data_programada: new Date().toISOString().slice(0, 10),
-        enviado: true,
-        id_tarefa: idTarefa,
-      },
-    ]);
-  }
-
-  function criarUsuarioAdminOuMentor(u: Omit<Usuario, "id_usuario" | "senha"> & { senha?: string }) {
-    const id_usuario = nextIds.usuario++;
-    setUsuarios((prev) => [
-      ...prev,
-      { ...u, id_usuario, senha: u.senha ?? "trocar123" },
-    ]);
-  }
-
-  function atualizarLinkPitch(idEquipe: number, link: string) {
-    setEquipes((prev) => prev.map((eq) => (eq.id_equipe === idEquipe ? { ...eq, link_pitch: link } : eq)));
-  }
-
-  function adicionarMentor(idEquipe: number, idUsuario: number) {
-    setEquipeMentores((prev) => {
-      const jaExiste = prev.some((em) => em.id_equipe === idEquipe && em.id_usuario === idUsuario);
-      if (jaExiste) return prev;
-      return [...prev, { id_equipe: idEquipe, id_usuario: idUsuario }];
-    });
-    // mantém id_mentor (schema atual) apontando para o primeiro mentor, para compatibilidade
-    setEquipes((prev) =>
-      prev.map((eq) => (eq.id_equipe === idEquipe && eq.id_mentor == null ? { ...eq, id_mentor: idUsuario } : eq))
+    setUsuarios(
+      mesclarUsuarios(
+        integrantes.map((i) => i.usuario),
+        [usuario]
+      )
     );
-  }
+    setEquipeMentores(mentoresApi);
+    setTarefas(tarefasApi);
+    setEtapas(etapasPorEquipe.flat());
 
-  function removerMentor(idEquipe: number, idUsuario: number) {
-    setEquipeMentores((prev) => prev.filter((em) => !(em.id_equipe === idEquipe && em.id_usuario === idUsuario)));
-    setEquipes((prev) =>
-      prev.map((eq) => (eq.id_equipe === idEquipe && eq.id_mentor === idUsuario ? { ...eq, id_mentor: null } : eq))
+    // entregáveis: o aluno só pode listar por tarefa (a rota geral é de admin/mentor)
+    const porTarefa = await Promise.all(
+      tarefasApi.map((t) => apiInfoHub.tarefas.listarEntregaveis(t.id_tarefa))
     );
-  }
+    setEntregaveis(porTarefa.flat());
 
-  function registrarCadastroInicial(input: NovoCadastroInput) {
-    const id_usuario = nextIds.usuario++;
-    const lider: Usuario = {
-      id_usuario,
-      nome: input.nomeLider,
+    // anotações e lembretes são internos da coordenação (RF-10) — aluno nunca vê
+    setAnotacoes([]);
+    setLembretes([]);
+  }, []);
+
+  const limparDadosDoUsuario = useCallback(() => {
+    setUsuarios([]);
+    setEquipes([]);
+    setEquipeUsuarios([]);
+    setTarefas([]);
+    setEntregaveis([]);
+    setAnotacoes([]);
+    setLembretes([]);
+    setEquipeMentores([]);
+    setEtapas([]);
+  }, []);
+
+  const recarregar = useCallback(async () => {
+    if (!usuarioAtual) {
+      limparDadosDoUsuario();
+      setCarregando(false);
+      return;
+    }
+    setCarregando(true);
+    setErroCarregamento(null);
+    try {
+      if (usuarioAtual.perfil === "aluno") await carregarComoAluno(usuarioAtual);
+      else await carregarComoAdmin();
+    } catch (erro) {
+      setErroCarregamento(mensagemDeErro(erro));
+    } finally {
+      setCarregando(false);
+    }
+  }, [usuarioAtual, carregarComoAluno, carregarComoAdmin, limparDadosDoUsuario]);
+
+  // recarrega sempre que muda quem está logado (login, logout, sessão expirada)
+  useEffect(() => {
+    if (restaurandoSessao) return;
+    recarregar();
+  }, [restaurandoSessao, recarregar]);
+
+  /** Executa uma escrita na API guardando a mensagem de erro, em vez de quebrar a tela. */
+  const executar = useCallback(async (acao: () => Promise<void>) => {
+    setErroAcao(null);
+    try {
+      await acao();
+    } catch (erro) {
+      setErroAcao(mensagemDeErro(erro));
+    }
+  }, []);
+
+  const substituirEquipe = useCallback((equipe: Equipe) => {
+    setEquipes((prev) => prev.map((e) => (e.id_equipe === equipe.id_equipe ? equipe : e)));
+  }, []);
+
+  const substituirTarefa = useCallback((tarefa: Tarefa) => {
+    setTarefas((prev) => prev.map((t) => (t.id_tarefa === tarefa.id_tarefa ? tarefa : t)));
+  }, []);
+
+  const avancarEtapa = useCallback(
+    (idEquipe: number, delta: 1 | -1) =>
+      executar(async () => {
+        substituirEquipe(await apiInfoHub.equipes.avancarEtapa(idEquipe, delta));
+      }),
+    [executar, substituirEquipe]
+  );
+
+  const marcarProntoParaInovAMF = useCallback(
+    (idEquipe: number, pronto: boolean) =>
+      executar(async () => {
+        substituirEquipe(await apiInfoHub.equipes.marcarPronto(idEquipe, pronto));
+      }),
+    [executar, substituirEquipe]
+  );
+
+  const atualizarLinkPitch = useCallback(
+    (idEquipe: number, link: string) =>
+      executar(async () => {
+        substituirEquipe(await apiInfoHub.equipes.atualizarLinkPitch(idEquipe, link));
+      }),
+    [executar, substituirEquipe]
+  );
+
+  const criarTarefa = useCallback(
+    (t: { titulo: string; descricao: string; data_limite: string; id_equipe: number; id_etapa: number }) =>
+      executar(async () => {
+        const nova = await apiInfoHub.tarefas.criar(t);
+        setTarefas((prev) => [...prev, nova]);
+      }),
+    [executar]
+  );
+
+  const atualizarStatusTarefa = useCallback(
+    (idTarefa: number, idStatus: number) =>
+      executar(async () => {
+        substituirTarefa(await apiInfoHub.tarefas.atualizarStatus(idTarefa, idStatus));
+      }),
+    [executar, substituirTarefa]
+  );
+
+  const atualizarPrazoTarefa = useCallback(
+    (idTarefa: number, novaData: string) =>
+      executar(async () => {
+        substituirTarefa(await apiInfoHub.tarefas.atualizarPrazo(idTarefa, novaData));
+      }),
+    [executar, substituirTarefa]
+  );
+
+  const enviarEntregavel = useCallback(
+    (idTarefa: number, _idUsuario: number, arquivoNome: string, tipo: string) =>
+      executar(async () => {
+        // o autor do envio vem do token no backend — o id passado pela tela é ignorado
+        const novo = await apiInfoHub.tarefas.enviarEntregavel(idTarefa, arquivoNome, tipo);
+        setEntregaveis((prev) => [...prev, novo]);
+        // o envio já muda o status da tarefa para "Entregue" no servidor
+        substituirTarefa(await apiInfoHub.tarefas.buscarPorId(idTarefa));
+      }),
+    [executar, substituirTarefa]
+  );
+
+  const adicionarAnotacao = useCallback(
+    (a: Omit<Anotacao, "id_anotacao" | "data_registro">) =>
+      executar(async () => {
+        const nova = await apiInfoHub.anotacoes.criar({
+          descricao: a.descricao,
+          id_equipe: a.id_equipe,
+          id_etapa: a.id_etapa,
+        });
+        setAnotacoes((prev) => [nova, ...prev]);
+      }),
+    [executar]
+  );
+
+  const dispararLembreteManual = useCallback(
+    (idTarefa: number) =>
+      executar(async () => {
+        const novo = await apiInfoHub.lembretes.criar(idTarefa);
+        setLembretes((prev) => [...prev, novo]);
+      }),
+    [executar]
+  );
+
+  const criarUsuarioAdminOuMentor = useCallback(
+    (u: { nome: string; email: string; telefone?: string | null; senha: string; perfil: "admin" | "mentor" }) =>
+      executar(async () => {
+        const novo = await apiInfoHub.usuarios.criar(u);
+        setUsuarios((prev) => mesclarUsuarios(prev, [novo]));
+      }),
+    [executar]
+  );
+
+  const adicionarMentor = useCallback(
+    (idEquipe: number, idUsuario: number) =>
+      executar(async () => {
+        const mentores = await apiInfoHub.equipes.adicionarMentor(idEquipe, idUsuario);
+        setEquipeMentores((prev) => [
+          ...prev.filter((em) => em.id_equipe !== idEquipe),
+          ...mentores.map((m) => ({ id_equipe: idEquipe, id_usuario: m.id_usuario })),
+        ]);
+        setUsuarios((prev) => mesclarUsuarios(prev, mentores));
+        // o backend também ajusta equipe.id_mentor (o "mentor principal")
+        substituirEquipe(await apiInfoHub.equipes.buscarPorId(idEquipe));
+      }),
+    [executar, substituirEquipe]
+  );
+
+  const removerMentor = useCallback(
+    (idEquipe: number, idUsuario: number) =>
+      executar(async () => {
+        const mentores = await apiInfoHub.equipes.removerMentor(idEquipe, idUsuario);
+        setEquipeMentores((prev) => [
+          ...prev.filter((em) => em.id_equipe !== idEquipe),
+          ...mentores.map((m) => ({ id_equipe: idEquipe, id_usuario: m.id_usuario })),
+        ]);
+        substituirEquipe(await apiInfoHub.equipes.buscarPorId(idEquipe));
+      }),
+    [executar, substituirEquipe]
+  );
+
+  /**
+   * Decisão do InfoHub (WhatsApp): só o mentor DESTA equipe pode
+   * acrescentar uma etapa extra na jornada dela. O backend já valida isso
+   * (403 se não for); aqui só propagamos o resultado pro estado local.
+   */
+  const criarEtapaExtra = useCallback(
+    (idEquipe: number, nome: string, descricao: string) =>
+      executar(async () => {
+        const nova = await apiInfoHub.equipes.criarEtapa(idEquipe, nome, descricao);
+        setEtapas((prev) => [...prev, nova]);
+      }),
+    [executar]
+  );
+
+  /**
+   * RF-02: cadastro inicial da equipe. É rota pública e já devolve o token do
+   * líder. Esta função propaga o erro em vez de engoli-lo: a tela de inscrição
+   * precisa mostrar a validação campo a campo vinda do Zod.
+   */
+  const registrarCadastroInicial = useCallback(async (input: NovoCadastroInput) => {
+    return apiInfoHub.inscricao.enviar({
+      nome_lider: input.nomeLider,
       telefone: input.telefone,
       email: input.email,
       senha: input.senha,
-      perfil: "aluno",
       id_curso: input.idCurso,
       semestre: input.semestre,
-    };
-
-    // Esclarecido com o cliente: não é preciso RA, só e-mail e curso do colega.
-    // Se o e-mail já pertence a um aluno cadastrado, ele é automaticamente
-    // adicionado à nova equipe (sem precisar aceitar convite); senão, a conta
-    // dele já é criada agora (com senha provisória) para que também possa
-    // logar depois.
-    const colegasUsuarios: Usuario[] = [];
-    const idsColegas: number[] = [];
-
-    setUsuarios((prevUsuarios) => {
-      const usuariosAtualizados = [...prevUsuarios, lider];
-      for (const colega of input.colegas) {
-        if (!colega.email.trim()) continue;
-        const existente = usuariosAtualizados.find(
-          (u) => u.email.toLowerCase() === colega.email.trim().toLowerCase()
-        );
-        if (existente) {
-          idsColegas.push(existente.id_usuario);
-          continue;
-        }
-        const novoColega: Usuario = {
-          id_usuario: nextIds.usuario++,
-          nome: colega.nome.trim() || colega.email.split("@")[0],
-          telefone: "",
-          email: colega.email.trim(),
-          senha: "trocar123",
-          perfil: "aluno",
-          id_curso: colega.idCurso,
-          semestre: null,
-        };
-        colegasUsuarios.push(novoColega);
-        idsColegas.push(novoColega.id_usuario);
-        usuariosAtualizados.push(novoColega);
-      }
-      return usuariosAtualizados;
-    });
-
-    const id_equipe = nextIds.equipe++;
-    const novaEquipe: Equipe = {
-      id_equipe,
+      colegas: input.colegas
+        .filter((c) => c.email.trim())
+        .map((c) => ({ nome: c.nome.trim() || undefined, email: c.email.trim(), id_curso: c.idCurso })),
       nome_equipe: input.nomeEquipe,
       nome_ideia: input.nomeIdeia,
       descricao_ideia: input.descricaoIdeia,
       area_ideia: input.areaIdeia,
       estagio_ideia: input.estagioIdeia,
       como_conheceu: input.comoConheceu,
-      link_pitch: null,
-      id_mentor: null,
-      id_etapa_atual: 1,
-    };
-
-    const novosVinculos: EquipeUsuario[] = [
-      { id_equipe_usuario: nextIds.equipeUsuario++, id_equipe, id_usuario, papel: "lider" },
-      ...idsColegas.map((idColega) => ({
-        id_equipe_usuario: nextIds.equipeUsuario++,
-        id_equipe,
-        id_usuario: idColega,
-        papel: "integrante" as const,
-      })),
-    ];
-
-    setEquipes((prev) => [...prev, novaEquipe]);
-    setEquipeUsuarios((prev) => [...prev, ...novosVinculos]);
-
-    return { usuario: lider, equipe: novaEquipe };
-  }
+    });
+  }, []);
 
   const value = useMemo<DataContextValue>(
     () => ({
@@ -295,6 +460,11 @@ export function DataProvider({ children }: { children: ReactNode }) {
       anotacoes,
       lembretes,
       equipeMentores,
+      carregando,
+      erroCarregamento,
+      erroAcao,
+      limparErroAcao,
+      recarregar,
       avancarEtapa,
       criarTarefa,
       atualizarStatusTarefa,
@@ -302,11 +472,13 @@ export function DataProvider({ children }: { children: ReactNode }) {
       enviarEntregavel,
       adicionarAnotacao,
       dispararLembreteManual,
+      marcarProntoParaInovAMF,
       registrarCadastroInicial,
       criarUsuarioAdminOuMentor,
       atualizarLinkPitch,
       adicionarMentor,
       removerMentor,
+      criarEtapaExtra,
     }),
     [
       cursos,
@@ -320,6 +492,25 @@ export function DataProvider({ children }: { children: ReactNode }) {
       anotacoes,
       lembretes,
       equipeMentores,
+      carregando,
+      erroCarregamento,
+      erroAcao,
+      limparErroAcao,
+      recarregar,
+      avancarEtapa,
+      criarTarefa,
+      atualizarStatusTarefa,
+      atualizarPrazoTarefa,
+      enviarEntregavel,
+      adicionarAnotacao,
+      dispararLembreteManual,
+      marcarProntoParaInovAMF,
+      registrarCadastroInicial,
+      criarUsuarioAdminOuMentor,
+      atualizarLinkPitch,
+      adicionarMentor,
+      removerMentor,
+      criarEtapaExtra,
     ]
   );
 

@@ -1,7 +1,9 @@
 import { NavLink, Outlet, useNavigate } from "react-router-dom";
 import { LayoutDashboard, KanbanSquare, ListChecks, BarChart3, LogOut, GraduationCap } from "lucide-react";
 import { Logo } from "../components/Logo";
+import { FaixaErro, TelaCarregando } from "../components/Kit";
 import { useAuth } from "../store/AuthContext";
+import { useData } from "../store/DataContext";
 
 const navItems = [
   { to: "/admin", label: "Visão geral", icon: LayoutDashboard, end: true },
@@ -12,6 +14,7 @@ const navItems = [
 
 export function AdminLayout() {
   const { usuarioAtual, sair } = useAuth();
+  const { carregando, erroCarregamento, erroAcao, limparErroAcao, recarregar } = useData();
   const navigate = useNavigate();
 
   function handleSair() {
@@ -69,7 +72,15 @@ export function AdminLayout() {
         </div>
       </aside>
       <main className="flex-1 min-w-0">
-        <Outlet />
+        {(erroCarregamento || erroAcao) && (
+          <div className="px-6 pt-6 space-y-2">
+            {erroCarregamento && (
+              <FaixaErro mensagem={erroCarregamento} rotuloAcao="tentar de novo" onAcao={recarregar} />
+            )}
+            {erroAcao && <FaixaErro mensagem={erroAcao} rotuloAcao="fechar" onAcao={limparErroAcao} />}
+          </div>
+        )}
+        {carregando ? <TelaCarregando mensagem="Carregando dados do InfoHub…" /> : <Outlet />}
       </main>
     </div>
   );

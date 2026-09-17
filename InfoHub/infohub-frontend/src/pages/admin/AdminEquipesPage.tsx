@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
 import { Link } from "react-router-dom";
-import { Search, User } from "lucide-react";
+import { Search, User, Sparkles } from "lucide-react";
 import { useData } from "../../store/DataContext";
 import { Card } from "../../components/Kit";
 import {
@@ -11,10 +11,23 @@ import {
   getStatusDescricao,
   isPrazoVencido,
 } from "../../utils/selectors";
-import type { AreaIdeia } from "../../types";
+import type { AreaIdeia, Equipe } from "../../types";
+
+// As 6 etapas padrão têm o mesmo nome pra toda equipe (nasceram da mesma
+// cópia — ver ETAPAS_PADRAO no backend). Por isso dá pra usar esses nomes
+// como cabeçalho fixo de coluna, mesmo sem uma tabela global de etapas.
+const NOMES_ETAPAS_PADRAO = [
+  "Envio da ideia",
+  "Contato com a equipe",
+  "Encontro 1 – Entendendo a ideia",
+  "Encontro 2 – Proposta de valor",
+  "Encontro 3 – Modelo de negócio",
+  "Encontro 4 – Pitch e inscrição",
+];
+const ULTIMA_ORDEM_PADRAO = NOMES_ETAPAS_PADRAO.length; // 6
 
 export function AdminEquipesPage() {
-  const { equipes, etapas, usuarios, equipeUsuarios, cursos, tarefas, statusTarefa, equipeMentores } = useData();
+  const { equipes, usuarios, equipeUsuarios, cursos, tarefas, statusTarefa, equipeMentores } = useData();
 
   const [busca, setBusca] = useState("");
   const [area, setArea] = useState<AreaIdeia | "todas">("todas");
@@ -37,11 +50,46 @@ export function AdminEquipesPage() {
     });
   }, [equipes, busca, area, mentorFiltro, equipeMentores]);
 
+  /**
+   * Cada equipe tem sua própria jornada agora (o mentor pode acrescentar
+   * etapas extras — decisão do InfoHub via WhatsApp), então não existe
+   * mais "a etapa 3" compartilhada por todo mundo. O Kanban agrupa pela
+   * POSIÇÃO (ordem) 1 a 6 — que tem o mesmo nome pra qualquer equipe,
+   * porque todas nascem da mesma cópia padrão — e junta quem já passou
+   * disso (ordem 7+, que diverge por equipe) numa coluna final única.
+   */
+  const colunas = useMemo(() => {
+    const porOrdem = new Map<number, Equipe[]>();
+    for (let o = 1; o <= ULTIMA_ORDEM_PADRAO; o++) porOrdem.set(o, []);
+    const extras: Equipe[] = [];
+
+    for (const eq of equipesFiltradas) {
+      if (eq.etapa_atual_ordem <= ULTIMA_ORDEM_PADRAO) {
+        porOrdem.get(eq.etapa_atual_ordem)?.push(eq);
+      } else {
+        extras.push(eq);
+      }
+    }
+
+    return [
+      ...NOMES_ETAPAS_PADRAO.map((nome, i) => ({
+        chave: `padrao-${i + 1}`,
+        titulo: nome,
+        ordem: i + 1,
+        extra: false,
+        equipes: porOrdem.get(i + 1) ?? [],
+      })),
+      { chave: "extras", titulo: "Além da jornada padrão", ordem: null, extra: true, equipes: extras },
+    ];
+  }, [equipesFiltradas]);
+
   return (
     <div className="p-6 sm:p-8 max-w-[1400px] mx-auto">
       <p className="font-mono text-xs text-accent-orange font-medium tracking-wide">FUNIL DE EQUIPES</p>
       <h1 className="font-display text-2xl sm:text-3xl font-semibold text-ink mt-1">Kanban da jornada</h1>
-      <p className="text-text-soft text-sm mt-1">Arraste o olhar pelas seis etapas — clique numa equipe para ver os detalhes.</p>
+      <p className="text-text-soft text-sm mt-1">
+        As 6 etapas padrão, mais uma coluna para quem já está em etapas extras criadas pelo mentor.
+      </p>
 
       <div className="flex flex-wrap gap-3 mt-6">
         <div className="relative flex-1 min-w-[220px]">
@@ -80,62 +128,67 @@ export function AdminEquipesPage() {
       </div>
 
       <div className="rail-scroll flex gap-4 mt-6 overflow-x-auto pb-4">
-        {etapas.map((etapa) => {
-          const equipesEtapa = equipesFiltradas.filter((eq) => eq.id_etapa_atual === etapa.id_etapa);
-          return (
-            <div key={etapa.id_etapa} className="w-72 shrink-0">
-              <div className="flex items-center gap-2 mb-3 px-1">
-                <span className="w-6 h-6 rounded-full gradient-brand text-white text-xs font-mono font-semibold flex items-center justify-center shrink-0">
-                  {etapa.id_etapa}
-                </span>
-                <h3 className="text-sm font-semibold text-ink leading-tight">{etapa.nome}</h3>
-              </div>
-              <div className="space-y-3">
-                {equipesEtapa.map((eq) => {
-                  const lider = getLiderEquipe(equipeUsuarios, usuarios, eq.id_equipe);
-                  const mentoresEquipe = getMentoresDaEquipe(equipeMentores, usuarios, eq.id_equipe);
-                  const tarefasEquipe = getTarefasDaEquipe(tarefas, eq.id_equipe);
-                  const atrasadas = tarefasEquipe.filter(
-                    (t) =>
-                      getStatusDescricao(statusTarefa, t.id_status) !== "Aprovada" && isPrazoVencido(t.data_limite)
-                  ).length;
-                  return (
-                    <Link key={eq.id_equipe} to={`/admin/equipes/${eq.id_equipe}`}>
-                      <Card className="p-4 hover:border-accent-orange/50 hover:shadow-md transition cursor-pointer">
-                        <p className="text-sm font-semibold text-ink leading-tight">{eq.nome_equipe}</p>
-                        <p className="text-xs text-text-soft mt-0.5 line-clamp-2">{eq.nome_ideia}</p>
-                        <div className="flex items-center justify-between mt-3">
-                          <span className="text-[11px] px-2 py-0.5 rounded-full bg-paper-alt text-ink-soft">
-                            {eq.area_ideia}
-                          </span>
-                          {atrasadas > 0 && (
-                            <span className="text-[11px] px-2 py-0.5 rounded-full bg-brand-danger-soft text-brand-danger font-medium">
-                              {atrasadas} atrasada{atrasadas > 1 ? "s" : ""}
-                            </span>
-                          )}
-                        </div>
-                        <div className="flex items-center justify-between mt-3 pt-3 border-t border-paper-line">
-                          <span className="text-[11px] text-text-faint flex items-center gap-1">
-                            <User size={11} /> {lider ? lider.nome.split(" ")[0] : "—"} ·{" "}
-                            {getCursoNome(cursos, lider?.id_curso ?? null)}
-                          </span>
-                          <span className="text-[11px] text-text-faint">
-                            {mentoresEquipe.length > 0
-                              ? mentoresEquipe.map((m) => m.nome.split(" ")[0]).join(", ")
-                              : "sem mentor"}
-                          </span>
-                        </div>
-                      </Card>
-                    </Link>
-                  );
-                })}
-                {equipesEtapa.length === 0 && (
-                  <p className="text-xs text-text-faint italic px-1">Nenhuma equipe aqui.</p>
-                )}
-              </div>
+        {colunas.map((coluna) => (
+          <div key={coluna.chave} className="w-72 shrink-0">
+            <div className="flex items-center gap-2 mb-3 px-1">
+              <span
+                className={
+                  coluna.extra
+                    ? "w-6 h-6 rounded-full bg-accent-orange/15 text-accent-orange text-xs font-mono font-semibold flex items-center justify-center shrink-0"
+                    : "w-6 h-6 rounded-full gradient-brand text-white text-xs font-mono font-semibold flex items-center justify-center shrink-0"
+                }
+              >
+                {coluna.extra ? <Sparkles size={12} /> : coluna.ordem}
+              </span>
+              <h3 className="text-sm font-semibold text-ink leading-tight">{coluna.titulo}</h3>
             </div>
-          );
-        })}
+            <div className="space-y-3">
+              {coluna.equipes.map((eq) => {
+                const lider = getLiderEquipe(equipeUsuarios, usuarios, eq.id_equipe);
+                const mentoresEquipe = getMentoresDaEquipe(equipeMentores, usuarios, eq.id_equipe);
+                const tarefasEquipe = getTarefasDaEquipe(tarefas, eq.id_equipe);
+                const atrasadas = tarefasEquipe.filter(
+                  (t) => getStatusDescricao(statusTarefa, t.id_status) !== "Aprovada" && isPrazoVencido(t.data_limite)
+                ).length;
+                return (
+                  <Link key={eq.id_equipe} to={`/admin/equipes/${eq.id_equipe}`}>
+                    <Card className="p-4 hover:border-accent-orange/50 hover:shadow-md transition cursor-pointer">
+                      <p className="text-sm font-semibold text-ink leading-tight">{eq.nome_equipe}</p>
+                      <p className="text-xs text-text-soft mt-0.5 line-clamp-2">{eq.nome_ideia}</p>
+                      {coluna.extra && (
+                        <p className="text-[11px] text-accent-orange mt-1.5 font-medium">{eq.etapa_atual_nome}</p>
+                      )}
+                      <div className="flex items-center justify-between mt-3">
+                        <span className="text-[11px] px-2 py-0.5 rounded-full bg-paper-alt text-ink-soft">
+                          {eq.area_ideia}
+                        </span>
+                        {atrasadas > 0 && (
+                          <span className="text-[11px] px-2 py-0.5 rounded-full bg-brand-danger-soft text-brand-danger font-medium">
+                            {atrasadas} atrasada{atrasadas > 1 ? "s" : ""}
+                          </span>
+                        )}
+                      </div>
+                      <div className="flex items-center justify-between mt-3 pt-3 border-t border-paper-line">
+                        <span className="text-[11px] text-text-faint flex items-center gap-1">
+                          <User size={11} /> {lider ? lider.nome.split(" ")[0] : "—"} ·{" "}
+                          {getCursoNome(cursos, lider?.id_curso ?? null)}
+                        </span>
+                        <span className="text-[11px] text-text-faint">
+                          {mentoresEquipe.length > 0
+                            ? mentoresEquipe.map((m) => m.nome.split(" ")[0]).join(", ")
+                            : "sem mentor"}
+                        </span>
+                      </div>
+                    </Card>
+                  </Link>
+                );
+              })}
+              {coluna.equipes.length === 0 && (
+                <p className="text-xs text-text-faint italic px-1">Nenhuma equipe aqui.</p>
+              )}
+            </div>
+          </div>
+        ))}
       </div>
     </div>
   );

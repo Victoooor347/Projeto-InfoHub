@@ -56,6 +56,7 @@ export function AdminEquipeDetalhePage() {
     dispararLembreteManual,
     adicionarMentor,
     removerMentor,
+    criarEtapaExtra,
   } = useData();
 
   const equipe = equipes.find((e) => e.id_equipe === idEquipe);
@@ -67,6 +68,9 @@ export function AdminEquipeDetalhePage() {
   const [etapaTarefa, setEtapaTarefa] = useState(equipe?.id_etapa_atual ?? 1);
   const [tarefaEditandoPrazo, setTarefaEditandoPrazo] = useState<number | null>(null);
   const [novoMentorId, setNovoMentorId] = useState<number | "">("");
+  const [mostrarNovaEtapa, setMostrarNovaEtapa] = useState(false);
+  const [nomeEtapa, setNomeEtapa] = useState("");
+  const [descEtapa, setDescEtapa] = useState("");
 
   const ehMentor = usuarioAtual?.perfil === "mentor";
 
@@ -80,6 +84,15 @@ export function AdminEquipeDetalhePage() {
   );
   const tarefasEquipe = tarefas.filter((t) => t.id_equipe === idEquipe).sort((a, b) => a.data_limite.localeCompare(b.data_limite));
   const anotacoesEquipe = anotacoes.filter((a) => a.id_equipe === idEquipe);
+  // Jornada DESTA equipe (etapa é por-equipe agora — ver decisão 7 do backend).
+  const etapasEquipe = useMemo(
+    () => etapas.filter((e) => e.id_equipe === idEquipe).sort((a, b) => a.ordem - b.ordem),
+    [etapas, idEquipe]
+  );
+  // Decisão do InfoHub (WhatsApp): só o mentor DESTA equipe pode acrescentar
+  // etapa extra — não basta ser mentor em geral (ehMentor), tem que estar
+  // na lista de mentores desta equipe especificamente.
+  const souMentorDestaEquipe = mentoresEquipe.some((m) => m.id_usuario === usuarioAtual?.id_usuario);
 
   if (!equipe) {
     return (
@@ -120,7 +133,14 @@ export function AdminEquipeDetalhePage() {
     setNovaNota("");
   }
 
-  const etapaAtualInfo = etapas.find((e) => e.id_etapa === equipe.id_etapa_atual);
+  function handleCriarEtapaExtra(e: React.FormEvent) {
+    e.preventDefault();
+    if (!nomeEtapa.trim()) return;
+    criarEtapaExtra(idEquipe, nomeEtapa.trim(), descEtapa.trim() || "Etapa extra combinada com o mentor.");
+    setNomeEtapa("");
+    setDescEtapa("");
+    setMostrarNovaEtapa(false);
+  }
 
   return (
     <div className="p-6 sm:p-8 max-w-6xl mx-auto">
@@ -166,12 +186,15 @@ export function AdminEquipeDetalhePage() {
         <div className="mt-7 pt-6 border-t border-paper-line">
           <div className="flex items-center justify-between mb-4">
             <p className="text-xs font-semibold uppercase tracking-wide text-text-soft">
-              Etapa atual: <span className="text-ink">{etapaAtualInfo?.nome}</span>
+              Etapa atual: <span className="text-ink">{equipe.etapa_atual_nome}</span>
+              {!equipe.etapa_atual_padrao && (
+                <span className="ml-1.5 text-accent-orange normal-case font-normal">(etapa extra)</span>
+              )}
             </p>
             <div className="flex gap-2">
               <button
                 onClick={() => avancarEtapa(idEquipe, -1)}
-                disabled={equipe.id_etapa_atual === 1}
+                disabled={equipe.etapa_atual_ordem === 1}
                 className="p-1.5 rounded-lg border border-paper-line disabled:opacity-30 hover:bg-paper-alt transition"
                 title="Retroceder etapa (RF-09)"
               >
@@ -179,7 +202,7 @@ export function AdminEquipeDetalhePage() {
               </button>
               <button
                 onClick={() => avancarEtapa(idEquipe, 1)}
-                disabled={equipe.id_etapa_atual === 6}
+                disabled={equipe.etapa_atual_ordem === equipe.total_etapas}
                 className="p-1.5 rounded-lg border border-paper-line disabled:opacity-30 hover:bg-paper-alt transition"
                 title="Avançar etapa (RF-09)"
               >
@@ -187,7 +210,44 @@ export function AdminEquipeDetalhePage() {
               </button>
             </div>
           </div>
-          <StageRail etapas={etapas} etapaAtual={equipe.id_etapa_atual} pronto={equipe.pronto_para_inovamf} />
+          <StageRail etapas={etapasEquipe} ordemAtual={equipe.etapa_atual_ordem} pronto={equipe.pronto_para_inovamf} />
+
+          {/* Decisão do InfoHub (WhatsApp): a jornada padrão segue com 6 etapas,
+              mas o mentor DESTA equipe pode acrescentar etapas extras. */}
+          {souMentorDestaEquipe && (
+            <div className="mt-4 pt-4 border-t border-paper-line">
+              {mostrarNovaEtapa ? (
+                <form onSubmit={handleCriarEtapaExtra} className="space-y-2">
+                  <input
+                    className="w-full rounded-lg border border-paper-line px-3 py-2 text-sm"
+                    placeholder="Nome da etapa extra (ex.: Follow-up pós-InovAMF)"
+                    value={nomeEtapa}
+                    onChange={(e) => setNomeEtapa(e.target.value)}
+                    required
+                  />
+                  <textarea
+                    className="w-full rounded-lg border border-paper-line px-3 py-2 text-sm min-h-[60px]"
+                    placeholder="Do que se trata essa etapa?"
+                    value={descEtapa}
+                    onChange={(e) => setDescEtapa(e.target.value)}
+                  />
+                  <div className="flex gap-2">
+                    <PrimaryButton type="submit">
+                      Adicionar como etapa {equipe.total_etapas + 1}
+                    </PrimaryButton>
+                    <SecondaryButton onClick={() => setMostrarNovaEtapa(false)}>Cancelar</SecondaryButton>
+                  </div>
+                </form>
+              ) : (
+                <button
+                  onClick={() => setMostrarNovaEtapa(true)}
+                  className="text-xs font-semibold text-accent-orange flex items-center gap-1 hover:underline"
+                >
+                  <Plus size={14} /> Acrescentar etapa extra na jornada desta equipe
+                </button>
+              )}
+            </div>
+          )}
         </div>
       </Card>
 
@@ -237,9 +297,9 @@ export function AdminEquipeDetalhePage() {
                       value={etapaTarefa}
                       onChange={(e) => setEtapaTarefa(Number(e.target.value))}
                     >
-                      {etapas.map((et) => (
+                      {etapasEquipe.map((et) => (
                         <option key={et.id_etapa} value={et.id_etapa}>
-                          {et.id_etapa}. {et.nome}
+                          {et.ordem}. {et.nome}
                         </option>
                       ))}
                     </select>

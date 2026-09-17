@@ -1,5 +1,6 @@
 import { query } from "../../config/db";
 import { AppError } from "../../utils/AppError";
+import { validarEtapaPertenceEquipe } from "../equipes/equipes.service";
 import type { CriarTarefaInput } from "./tarefas.schemas";
 import type { Tarefa } from "./tarefas.types";
 
@@ -45,6 +46,7 @@ async function idDoStatus(descricao: string): Promise<number> {
 
 /** RF-11/RF-12: criar tarefa para uma equipe, já entra como "Pendente". */
 export async function criarTarefa(input: CriarTarefaInput): Promise<Tarefa> {
+  await validarEtapaPertenceEquipe(input.id_etapa, input.id_equipe);
   const idPendente = await idDoStatus("Pendente");
   const r = await query<Tarefa>(
     `INSERT INTO tarefa (titulo, descricao, data_limite, id_equipe, id_etapa, id_status)

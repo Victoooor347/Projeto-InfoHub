@@ -23,6 +23,18 @@
 --      Mantivemos equipe.id_mentor como o "mentor principal" por
 --      compatibilidade, mas a fonte de verdade para "quem mentora essa
 --      equipe" agora é equipe_mentor.
+--   7. `etapa` deixou de ser uma tabela global fixa de 6 linhas e passou a
+--      pertencer a cada equipe (`etapa.id_equipe`, `etapa.ordem`).
+--      Decisão do InfoHub via WhatsApp: "a jornada padrão segue com 6
+--      etapas, mas o mentor pode acrescentar etapas extras por equipe".
+--      Cada equipe nova nasce com uma cópia das 6 etapas padrão (ordem
+--      1 a 6); o mentor DAQUELA equipe pode inserir etapas extras depois
+--      (ordem 7, 8, ...). `equipe.id_etapa_atual`, `tarefa.id_etapa` e
+--      `anotacoes.id_etapa` agora usam FK composta (id_etapa, id_equipe)
+--      para garantir que uma equipe nunca aponte para a etapa de outra.
+--      Ver src/db/migrations/002_etapas_por_equipe.ts para a migração que
+--      transforma um banco já em produção (schema antigo) neste formato
+--      sem perder dados.
 -- =====================================================================
 
 -- ---------- tipos ENUM ----------
@@ -85,14 +97,16 @@ CREATE TABLE usuario (
 );
 CREATE INDEX idx_usuario_perfil ON usuario (perfil);
 
--- ---------- etapa ----------
-CREATE TABLE etapa (
-  id_etapa SERIAL PRIMARY KEY,
-  nome VARCHAR(100) NOT NULL,
-  descricao TEXT NOT NULL
-);
-
 -- ---------- equipe ----------
+-- id_etapa_atual é fisicamente opcional só para quebrar a referência
+-- circular com `etapa` (uma equipe precisa existir antes de poder ter
+-- etapas; e toda etapa pertence a uma equipe). Logicamente ele NUNCA fica
+-- nulo depois que a equipe é criada — o service sempre faz, na mesma
+-- transação: 1) INSERT equipe (id_etapa_atual = NULL), 2) INSERT das 6
+-- etapas padrão já com id_equipe preenchido, 3) UPDATE equipe SET
+-- id_etapa_atual = <etapa de ordem 1>. Uma FK composta com NULL em
+-- qualquer lado é considerada satisfeita pelo Postgres, então isso não
+-- exige DEFERRABLE.
 CREATE TABLE equipe (
   id_equipe SERIAL PRIMARY KEY,
   nome_equipe VARCHAR(100) NOT NULL,
@@ -103,11 +117,37 @@ CREATE TABLE equipe (
   como_conheceu como_conheceu,
   link_pitch VARCHAR(255),
   id_mentor INT REFERENCES usuario (id_usuario),
-  id_etapa_atual INT NOT NULL REFERENCES etapa (id_etapa),
+  id_etapa_atual INT,
   pronto_para_inovamf BOOLEAN NOT NULL DEFAULT FALSE,
   criado_em TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 CREATE INDEX idx_equipe_etapa_atual ON equipe (id_etapa_atual);
+
+-- ---------- etapa ----------
+-- Não é mais um catálogo global fixo de 6 linhas — cada equipe tem sua
+-- própria jornada. `ordem` posiciona a etapa dentro da jornada DAQUELA
+-- equipe (1, 2, 3, ...). As 6 primeiras (ordem 1-6, padrao=true) nascem
+-- junto com a equipe, com os nomes da cartilha; o mentor da equipe pode
+-- inserir etapas extras depois (ordem 7+, padrao=false).
+CREATE TABLE etapa (
+  id_etapa SERIAL PRIMARY KEY,
+  id_equipe INT NOT NULL REFERENCES equipe (id_equipe) ON DELETE CASCADE,
+  ordem INT NOT NULL CHECK (ordem >= 1),
+  nome VARCHAR(100) NOT NULL,
+  descricao TEXT NOT NULL,
+  padrao BOOLEAN NOT NULL DEFAULT FALSE,
+  criada_por INT REFERENCES usuario (id_usuario),
+  criado_em TIMESTAMPTZ NOT NULL DEFAULT now(),
+  UNIQUE (id_equipe, ordem),
+  UNIQUE (id_etapa, id_equipe) -- necessário para ser alvo de FK composta (ver abaixo)
+);
+CREATE INDEX idx_etapa_equipe ON etapa (id_equipe);
+
+-- agora que `etapa` existe, fecha a FK composta de equipe.id_etapa_atual
+-- (garante que uma equipe só pode apontar para uma etapa DELA MESMA)
+ALTER TABLE equipe
+  ADD CONSTRAINT fk_equipe_etapa_atual
+  FOREIGN KEY (id_etapa_atual, id_equipe) REFERENCES etapa (id_etapa, id_equipe);
 
 -- ---------- equipe_usuario ----------
 CREATE TABLE equipe_usuario (
@@ -127,15 +167,20 @@ CREATE TABLE status_tarefa (
 );
 
 -- ---------- tarefa ----------
+-- id_etapa usa FK composta (id_etapa, id_equipe) -> etapa(id_etapa, id_equipe):
+-- garante em nível de banco que uma tarefa só pode apontar para uma etapa
+-- DA MESMA equipe dela (impossível referenciar a etapa 3 da equipe B numa
+-- tarefa da equipe A).
 CREATE TABLE tarefa (
   id_tarefa SERIAL PRIMARY KEY,
   titulo VARCHAR(100) NOT NULL,
   descricao TEXT NOT NULL,
   data_limite DATE NOT NULL,
   id_equipe INT NOT NULL REFERENCES equipe (id_equipe) ON DELETE CASCADE,
-  id_etapa INT NOT NULL REFERENCES etapa (id_etapa),
+  id_etapa INT NOT NULL,
   id_status INT NOT NULL REFERENCES status_tarefa (id_status),
-  criado_em TIMESTAMPTZ NOT NULL DEFAULT now()
+  criado_em TIMESTAMPTZ NOT NULL DEFAULT now(),
+  FOREIGN KEY (id_etapa, id_equipe) REFERENCES etapa (id_etapa, id_equipe)
 );
 CREATE INDEX idx_tarefa_equipe ON tarefa (id_equipe);
 CREATE INDEX idx_tarefa_status ON tarefa (id_status);
@@ -152,13 +197,15 @@ CREATE TABLE entregavel (
 CREATE INDEX idx_entregavel_tarefa ON entregavel (id_tarefa);
 
 -- ---------- anotacoes ----------
+-- mesma lógica de FK composta que tarefa, pelo mesmo motivo.
 CREATE TABLE anotacoes (
   id_anotacao SERIAL PRIMARY KEY,
   descricao TEXT NOT NULL,
   data_registro TIMESTAMPTZ NOT NULL DEFAULT now(),
   id_usuario INT NOT NULL REFERENCES usuario (id_usuario),
   id_equipe INT NOT NULL REFERENCES equipe (id_equipe) ON DELETE CASCADE,
-  id_etapa INT NOT NULL REFERENCES etapa (id_etapa)
+  id_etapa INT NOT NULL,
+  FOREIGN KEY (id_etapa, id_equipe) REFERENCES etapa (id_etapa, id_equipe)
 );
 CREATE INDEX idx_anotacoes_equipe ON anotacoes (id_equipe);
 

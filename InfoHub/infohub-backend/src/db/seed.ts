@@ -1,5 +1,6 @@
 import bcrypt from "bcryptjs";
 import { pool } from "../config/db";
+import { ETAPAS_PADRAO } from "./etapasPadrao";
 
 async function hash(senha: string) {
   return bcrypt.hash(senha, 10);
@@ -31,27 +32,24 @@ async function seed() {
     }
 
     // ---------- etapas ----------
-    const etapas = [
-      ["Envio da ideia", "Aluno preenche o formulário inicial contando a ideia."],
-      ["Contato com a equipe", "Equipe InfoHub analisa a proposta e agenda o 1º encontro."],
-      [
-        "Encontro 1 – Entendendo a ideia",
-        "Mentor e aluno definem problema, público-alvo e solução inicial.",
-      ],
-      ["Encontro 2 – Proposta de valor", "Construção do Value Proposition Design."],
-      ["Encontro 3 – Modelo de negócio", "Construção do Business Model Canvas."],
-      [
-        "Encontro 4 – Pitch e inscrição",
-        "Revisão geral, gravação do Pitch Vídeo e conferência de documentos.",
-      ],
-    ];
-    const etapaIds: number[] = [];
-    for (const [nome, descricao] of etapas) {
-      const r = await client.query<{ id_etapa: number }>(
-        `INSERT INTO etapa (nome, descricao) VALUES ($1, $2) RETURNING id_etapa`,
-        [nome, descricao]
-      );
-      etapaIds.push(r.rows[0].id_etapa);
+    // Não são mais criadas de uma vez, globalmente: cada equipe ganha sua
+    // própria cópia das 6 etapas padrão no momento em que é criada (ver
+    // bloco "equipes" abaixo). etapaIdsPorEquipe[equipeKey][i] guarda o
+    // id_etapa da i-ésima etapa padrão (0 = "Envio da ideia", ..., 5 =
+    // "Encontro 4") dentro da jornada daquela equipe específica.
+    const etapaIdsPorEquipe: Record<string, number[]> = {};
+
+    async function criarEtapasPadraoDaEquipe(id_equipe: number): Promise<number[]> {
+      const ids: number[] = [];
+      for (let i = 0; i < ETAPAS_PADRAO.length; i++) {
+        const { nome, descricao } = ETAPAS_PADRAO[i];
+        const r = await client.query<{ id_etapa: number }>(
+          `INSERT INTO etapa (id_equipe, ordem, nome, descricao, padrao) VALUES ($1,$2,$3,$4,TRUE) RETURNING id_etapa`,
+          [id_equipe, i + 1, nome, descricao]
+        );
+        ids.push(r.rows[0].id_etapa);
+      }
+      return ids;
     }
 
     // ---------- status_tarefa (ordem importa: 1 Pendente ... 6 Reprovada/Ajustar) ----------
@@ -127,9 +125,10 @@ async function seed() {
     ];
     const equipeIds: Record<string, number> = {};
     for (const eq of equipesSeed) {
+      // 1) cria a equipe sem id_etapa_atual ainda (quebra a referência circular com etapa)
       const r = await client.query<{ id_equipe: number }>(
-        `INSERT INTO equipe (nome_equipe, nome_ideia, descricao_ideia, area_ideia, estagio_ideia, como_conheceu, link_pitch, id_etapa_atual, pronto_para_inovamf)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING id_equipe`,
+        `INSERT INTO equipe (nome_equipe, nome_ideia, descricao_ideia, area_ideia, estagio_ideia, como_conheceu, link_pitch, pronto_para_inovamf)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING id_equipe`,
         [
           eq.nome_equipe,
           eq.nome_ideia,
@@ -138,11 +137,21 @@ async function seed() {
           eq.estagio_ideia,
           eq.como_conheceu,
           eq.link_pitch,
-          etapaIds[eq.etapaIdx],
           eq.pronto,
         ]
       );
-      equipeIds[eq.key] = r.rows[0].id_equipe;
+      const id_equipe = r.rows[0].id_equipe;
+      equipeIds[eq.key] = id_equipe;
+
+      // 2) cria a cópia das 6 etapas padrão já pertencendo a essa equipe
+      const idsEtapasDestaEquipe = await criarEtapasPadraoDaEquipe(id_equipe);
+      etapaIdsPorEquipe[eq.key] = idsEtapasDestaEquipe;
+
+      // 3) só agora dá pra apontar id_etapa_atual pra etapa certa (dentro da jornada dela)
+      await client.query(`UPDATE equipe SET id_etapa_atual = $1 WHERE id_equipe = $2`, [
+        idsEtapasDestaEquipe[eq.etapaIdx],
+        id_equipe,
+      ]);
     }
 
     // ---------- equipe_usuario ----------
@@ -226,7 +235,7 @@ async function seed() {
           t.descricao,
           daysFromToday(t.offsetDias),
           equipeIds[t.equipe],
-          etapaIds[t.etapaIdx],
+          etapaIdsPorEquipe[t.equipe][t.etapaIdx],
           statusIds[t.status],
         ]
       );
@@ -255,7 +264,7 @@ async function seed() {
     for (const [usuarioKey, equipeKey, descricao, etapaIdx] of anotacoes) {
       await client.query(
         `INSERT INTO anotacoes (descricao, id_usuario, id_equipe, id_etapa) VALUES ($1,$2,$3,$4)`,
-        [descricao, usuarioIds[usuarioKey], equipeIds[equipeKey], etapaIds[etapaIdx]]
+        [descricao, usuarioIds[usuarioKey], equipeIds[equipeKey], etapaIdsPorEquipe[equipeKey][etapaIdx]]
       );
     }
 

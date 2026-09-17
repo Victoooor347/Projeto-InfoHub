@@ -72,7 +72,11 @@ export function AlunoDashboardPage() {
               </div>
 
               <div className="mt-6">
-                <StageRail etapas={etapas} etapaAtual={equipe.id_etapa_atual} pronto={equipe.pronto_para_inovamf} />
+                <StageRail
+                  etapas={etapas.filter((e) => e.id_equipe === equipe.id_equipe)}
+                  ordemAtual={equipe.etapa_atual_ordem}
+                  pronto={equipe.pronto_para_inovamf}
+                />
               </div>
 
               <div className="mt-6 pt-5 border-t border-paper-line flex flex-wrap items-center justify-between gap-3">

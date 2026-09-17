@@ -52,26 +52,24 @@ export function AlunoTarefaDetalhePage() {
   const podeEnviar = papel === "lider";
   const lider = equipe ? getLiderEquipe(equipeUsuarios, usuarios, equipe.id_equipe) : undefined;
 
-  function handleUploadArquivo(e: React.ChangeEvent<HTMLInputElement>) {
+  // Nesta v1 o backend guarda só a referência do arquivo (nome ou link) — não
+  // há upload binário ainda, então mandamos o nome do arquivo escolhido.
+  async function handleUploadArquivo(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
     if (!file || !usuarioAtual) return;
     setEnviando(true);
-    setTimeout(() => {
-      enviarEntregavel(idTarefa, usuarioAtual.id_usuario, file.name, file.type || "arquivo");
-      setEnviando(false);
-      if (fileInputRef.current) fileInputRef.current.value = "";
-    }, 600);
+    await enviarEntregavel(idTarefa, usuarioAtual.id_usuario, file.name, file.type || "arquivo");
+    setEnviando(false);
+    if (fileInputRef.current) fileInputRef.current.value = "";
   }
 
-  function handleEnviarLink(e: React.FormEvent) {
+  async function handleEnviarLink(e: React.FormEvent) {
     e.preventDefault();
     if (!linkExterno.trim() || !usuarioAtual) return;
     setEnviando(true);
-    setTimeout(() => {
-      enviarEntregavel(idTarefa, usuarioAtual.id_usuario, linkExterno.trim(), "link");
-      setLinkExterno("");
-      setEnviando(false);
-    }, 500);
+    await enviarEntregavel(idTarefa, usuarioAtual.id_usuario, linkExterno.trim(), "link");
+    setLinkExterno("");
+    setEnviando(false);
   }
 
   return (
