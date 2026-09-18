@@ -24,15 +24,16 @@ export async function buscarUsuarioPorId(id: number): Promise<Usuario> {
 
 export async function buscarUsuarioPorEmailComSenha(email: string) {
   const r = await query<Usuario & { senha_hash: string }>(
-    `SELECT ${USUARIO_COLUNAS_PUBLICAS}, senha_hash FROM usuario WHERE email = $1`,
-    [email]
+    `SELECT ${USUARIO_COLUNAS_PUBLICAS}, senha_hash FROM usuario WHERE lower(email) = $1`,
+    [email.trim().toLowerCase()]
   );
   return r.rows[0] ?? null;
 }
 
 /** RF-03: só admin pode criar contas de administrador/mentor. */
 export async function criarUsuarioAdminOuMentor(input: CriarUsuarioInput): Promise<Usuario> {
-  const existente = await query(`SELECT 1 FROM usuario WHERE email = $1`, [input.email]);
+  const email = input.email.trim().toLowerCase();
+  const existente = await query(`SELECT 1 FROM usuario WHERE lower(email) = $1`, [email]);
   if (existente.rowCount) throw AppError.conflict("Já existe uma conta com esse e-mail");
 
   const senha_hash = await bcrypt.hash(input.senha, 10);
@@ -40,7 +41,7 @@ export async function criarUsuarioAdminOuMentor(input: CriarUsuarioInput): Promi
     `INSERT INTO usuario (nome, telefone, email, senha_hash, perfil)
      VALUES ($1, $2, $3, $4, $5)
      RETURNING ${USUARIO_COLUNAS_PUBLICAS}`,
-    [input.nome, input.telefone ?? null, input.email, senha_hash, input.perfil]
+    [input.nome, input.telefone ?? null, email, senha_hash, input.perfil]
   );
   return r.rows[0];
 }

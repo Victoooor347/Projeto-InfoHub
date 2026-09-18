@@ -79,7 +79,7 @@ interface DataContextValue {
   marcarProntoParaInovAMF: (idEquipe: number, pronto: boolean) => Promise<void>;
   registrarCadastroInicial: (
     input: NovoCadastroInput
-  ) => Promise<{ token: string; usuario: Usuario; equipe: Equipe }>;
+  ) => Promise<apiInfoHub.RespostaInscricao>;
   criarUsuarioAdminOuMentor: (u: {
     nome: string;
     email: string;

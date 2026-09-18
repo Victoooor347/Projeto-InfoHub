@@ -71,6 +71,12 @@ export async function listarIntegrantes(req: Request, res: Response) {
 
 export async function listarMentores(req: Request, res: Response) {
   const { id } = req.params as unknown as { id: number };
+
+  // mesma regra de integrantes/etapas: aluno só vê equipes das quais participa
+  if (req.usuario!.perfil === "aluno") {
+    const papel = await papelDoUsuarioNaEquipe(req.usuario!.id_usuario, id);
+    if (!papel) throw AppError.forbidden("Você não participa desta equipe");
+  }
   const mentores = await service.listarMentoresDaEquipe(id);
   res.json(mentores);
 }

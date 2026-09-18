@@ -13,10 +13,9 @@
 -- (mesmos nomes/descrições que já tinha), e tarefa/anotacoes/equipe são
 -- reapontadas para a cópia certa.
 --
--- Testada de verdade contra uma base fixture com 2 equipes em etapas
--- diferentes, cada uma com tarefa e anotação — ver
--- src/db/migrations/_schema_antigo_snapshot.sql (só para teste, não faz
--- parte do schema de produção).
+-- Só é necessária em um banco criado com o schema ANTIGO. Banco novo:
+-- ignore este arquivo, o schema.sql já está no formato novo.
+-- Como rodar (uma única vez): psql "$DATABASE_URL" -f src/db/migrations/002_etapas_por_equipe.sql
 -- =====================================================================
 
 BEGIN;

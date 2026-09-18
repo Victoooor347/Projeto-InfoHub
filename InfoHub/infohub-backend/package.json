@@ -12,8 +12,7 @@
     "db:seed": "tsx src/db/seed.ts",
     "db:migrate:prod": "node dist/db/migrate.js",
     "db:seed:prod": "node dist/db/seed.js",
-    "db:fresh": "npm run db:reset && npm run db:migrate && npm run db:seed",
-    "db:migrate:002-etapas-por-equipe": "tsx src/db/migrate-002-etapas-por-equipe.ts"
+    "db:fresh": "npm run db:reset && npm run db:migrate && npm run db:seed"
   },
   "keywords": [],
   "author": "",

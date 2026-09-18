@@ -7,6 +7,7 @@ import { useAuth } from "../store/AuthContext";
 import { mensagemDeErro } from "../services/http";
 import { PrimaryButton, Card } from "../components/Kit";
 import type { AreaIdeia, ComoConheceu, EstagioIdeia } from "../types";
+import type { RespostaInscricao } from "../services/api";
 
 const areas: AreaIdeia[] = ["Saúde", "Educação", "Meio Ambiente", "Tecnologia", "Entretenimento", "Serviços", "Outro"];
 const estagios: EstagioIdeia[] = ["Apenas ideia", "Validação", "Prototipagem", "Lançamento"];
@@ -40,7 +41,7 @@ export function InscricaoPage() {
 
   const [erro, setErro] = useState<string | null>(null);
   const [enviando, setEnviando] = useState(false);
-  const [enviado, setEnviado] = useState(false);
+  const [resultado, setResultado] = useState<RespostaInscricao | null>(null);
 
   // A lista de cursos vem da API, então pode chegar depois do primeiro render:
   // quando chegar, garante que o curso selecionado é um id que existe mesmo.
@@ -73,7 +74,7 @@ export function InscricaoPage() {
     try {
       // POST /api/inscricao cria usuário + equipe + vínculos numa transação só
       // e já devolve o token do líder, então o aluno cai logado na área dele.
-      const { token, usuario } = await registrarCadastroInicial({
+      const resposta = await registrarCadastroInicial({
         nomeLider: nome,
         telefone,
         email,
@@ -89,11 +90,15 @@ export function InscricaoPage() {
         comoConheceu: comoConheceu || null,
       });
 
-      setEnviado(true);
-      setTimeout(() => {
-        entrarComToken(token, usuario);
-        navigate("/aluno");
-      }, 1400);
+      // Se nenhum colega ganhou conta nova, segue direto pra área do aluno.
+      // Senão, para na tela de sucesso até o líder anotar as senhas provisórias.
+      setResultado(resposta);
+      if (resposta.colegas_criados.length === 0) {
+        setTimeout(() => {
+          entrarComToken(resposta.token, resposta.usuario);
+          navigate("/aluno");
+        }, 1400);
+      }
     } catch (falha) {
       setErro(mensagemDeErro(falha));
     } finally {
@@ -101,16 +106,43 @@ export function InscricaoPage() {
     }
   }
 
-  if (enviado) {
+  if (resultado) {
+    const colegasNovos = resultado.colegas_criados;
     return (
       <div className="min-h-screen flex items-center justify-center bg-paper px-4">
-        <Card className="p-10 text-center max-w-sm">
+        <Card className="p-10 text-center max-w-md">
           <CheckCircle2 className="mx-auto text-brand-success" size={40} />
           <h2 className="font-display text-xl font-semibold text-ink mt-4">Ideia enviada!</h2>
-          <p className="text-text-soft text-sm mt-2">
-            Sua equipe entrou na Etapa 1 do funil. O administrador foi notificado por e-mail (RF-05). Redirecionando
-            para sua área…
-          </p>
+          <p className="text-text-soft text-sm mt-2">Sua equipe entrou na Etapa 1 do funil.</p>
+
+          {colegasNovos.length === 0 ? (
+            <p className="text-text-soft text-sm mt-2">Redirecionando para sua área…</p>
+          ) : (
+            <>
+              <p className="text-text-soft text-sm mt-4 text-left">
+                Criamos contas para os colegas abaixo. <strong>Anote e repasse as senhas agora</strong> — elas não
+                serão mostradas de novo.
+              </p>
+              <ul className="mt-3 space-y-2 text-left">
+                {colegasNovos.map((c) => (
+                  <li key={c.email} className="rounded-lg border px-3 py-2 text-sm">
+                    <div className="font-medium text-ink">{c.nome}</div>
+                    <div className="text-text-soft">{c.email}</div>
+                    <div className="font-mono mt-1">Senha: {c.senha_provisoria}</div>
+                  </li>
+                ))}
+              </ul>
+              <PrimaryButton
+                className="mt-5 w-full"
+                onClick={() => {
+                  entrarComToken(resultado.token, resultado.usuario);
+                  navigate("/aluno");
+                }}
+              >
+                Já anotei, continuar
+              </PrimaryButton>
+            </>
+          )}
         </Card>
       </div>
     );

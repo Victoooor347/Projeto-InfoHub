@@ -10,7 +10,7 @@ export const inscricaoRouter = Router();
 
 // Rota pública — é assim que uma equipe nova entra no sistema (RF-02).
 inscricaoRouter.post("/", validate({ body: inscricaoSchema }), async (req: Request, res: Response) => {
-  const { usuario, equipe } = await registrarCadastroInicial(req.body);
+  const { usuario, equipe, colegasCriados } = await registrarCadastroInicial(req.body);
 
   // devolve token já logado, igual ao comportamento do frontend mock
   // (entrarComo() após o cadastro), para o aluno cair direto na área dele.
@@ -18,5 +18,7 @@ inscricaoRouter.post("/", validate({ body: inscricaoSchema }), async (req: Reque
     expiresIn: env.JWT_EXPIRES_IN,
   } as SignOptions);
 
-  res.status(201).json({ token, usuario, equipe });
+  // colegas_criados: senhas provisórias dos colegas que ganharam conta nova
+  // agora. Só aparecem nesta resposta (não ficam guardadas em texto em lugar nenhum).
+  res.status(201).json({ token, usuario, equipe, colegas_criados: colegasCriados });
 });

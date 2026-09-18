@@ -11,24 +11,21 @@ async function seed() {
   try {
     await client.query("BEGIN");
 
+    // Seed é só para banco VAZIO (dados de demonstração). Rodar duas vezes
+    // daria erro de e-mail duplicado no meio — melhor parar com uma mensagem clara.
+    const jaTemUsuarios = await client.query(`SELECT 1 FROM usuario LIMIT 1`);
+    if (jaTemUsuarios.rowCount) {
+      throw new Error("O banco já tem usuários — o seed só deve rodar num banco recém-migrado. Nada foi alterado.");
+    }
+
     // ---------- cursos ----------
-    const cursosNomes = [
-      "Sistemas de Informação",
-      "Direito",
-      "Administração",
-      "Gastronomia",
-      "Ciências Contábeis",
-      "Ontopsicologia",
-      "Hotelaria",
-      "Pedagogia",
-    ];
+    // Os cursos agora são criados pelo schema.sql (dado de referência obrigatório);
+    // aqui só lemos os ids para usar nos usuários de demonstração.
     const cursoIds: Record<string, number> = {};
-    for (const nome of cursosNomes) {
-      const r = await client.query<{ id_curso: number }>(
-        `INSERT INTO cursos (nome) VALUES ($1) RETURNING id_curso`,
-        [nome]
-      );
-      cursoIds[nome] = r.rows[0].id_curso;
+    const cursosR = await client.query<{ id_curso: number; nome: string }>(`SELECT id_curso, nome FROM cursos`);
+    for (const row of cursosR.rows) cursoIds[row.nome] = row.id_curso;
+    if (cursosR.rowCount === 0) {
+      throw new Error("Tabela cursos vazia — rode `db:migrate` antes do seed.");
     }
 
     // ---------- etapas ----------
@@ -52,16 +49,13 @@ async function seed() {
       return ids;
     }
 
-    // ---------- status_tarefa (ordem importa: 1 Pendente ... 6 Reprovada/Ajustar) ----------
-    const statusList = ["Pendente", "Em andamento", "Entregue", "Atrasada", "Aprovada", "Reprovada/Ajustar"];
+    // ---------- status_tarefa ----------
+    // Também vêm do schema.sql agora; só lemos os ids.
     const statusIds: Record<string, number> = {};
-    for (const descricao of statusList) {
-      const r = await client.query<{ id_status: number }>(
-        `INSERT INTO status_tarefa (descricao) VALUES ($1) RETURNING id_status`,
-        [descricao]
-      );
-      statusIds[descricao] = r.rows[0].id_status;
-    }
+    const statusR = await client.query<{ id_status: number; descricao: string }>(
+      `SELECT id_status, descricao FROM status_tarefa`
+    );
+    for (const row of statusR.rows) statusIds[row.descricao] = row.id_status;
 
     // ---------- usuarios ----------
     type NovoUsuario = {

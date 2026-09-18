@@ -29,10 +29,18 @@ export interface RespostaLogin {
   usuario: Usuario;
 }
 
+/** Colega que ganhou conta nova na inscrição — senha só aparece nesta resposta. */
+export interface ColegaCriado {
+  nome: string;
+  email: string;
+  senha_provisoria: string;
+}
+
 export interface RespostaInscricao {
   token: string;
   usuario: Usuario;
   equipe: Equipe;
+  colegas_criados: ColegaCriado[];
 }
 
 export interface ColegaInscricao {

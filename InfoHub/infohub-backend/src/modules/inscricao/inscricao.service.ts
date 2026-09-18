@@ -1,3 +1,4 @@
+import { randomBytes } from "node:crypto";
 import bcrypt from "bcryptjs";
 import { pool } from "../../config/db";
 import { AppError } from "../../utils/AppError";
@@ -12,16 +13,40 @@ import type { InscricaoInput } from "./inscricao.schemas";
  * informados (só e-mail + curso, sem RA) são vinculados:
  *  - se o e-mail já existe no sistema, a pessoa é adicionada direto na
  *    equipe, sem precisar "aceitar" nada (esclarecido com o cliente);
- *  - se não existe, a conta já é criada agora (senha provisória) para que
- *    a pessoa também consiga logar depois.
+ *  - se não existe, a conta já é criada agora com uma senha provisória
+ *    ALEATÓRIA (diferente para cada colega). Essas senhas voltam na resposta
+ *    para o líder repassar aos colegas — enquanto não houver serviço de
+ *    e-mail, é o único jeito seguro de eles logarem.
+ *  - só contas de ALUNO podem ser vinculadas como colega: a rota é pública,
+ *    então sem essa trava qualquer um poderia enfiar o e-mail de um
+ *    admin/mentor dentro de uma equipe.
+ * E-mails são sempre gravados em minúsculas.
  * Tudo roda numa única transação: ou tudo é criado, ou nada é.
  */
+export interface ColegaCriado {
+  nome: string;
+  email: string;
+  senha_provisoria: string;
+}
+
+/** Senha provisória legível (sem caracteres ambíguos como 0/O, 1/l). */
+function gerarSenhaProvisoria(tamanho = 10): string {
+  const alfabeto = "abcdefghjkmnpqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+  const bytes = randomBytes(tamanho);
+  let senha = "";
+  for (let i = 0; i < tamanho; i++) senha += alfabeto[bytes[i] % alfabeto.length];
+  return senha;
+}
+
 export async function registrarCadastroInicial(input: InscricaoInput) {
+  const emailLider = input.email.trim().toLowerCase();
+  const colegasCriados: ColegaCriado[] = [];
+
   const client = await pool.connect();
   try {
     await client.query("BEGIN");
 
-    const existente = await client.query(`SELECT 1 FROM usuario WHERE email = $1`, [input.email]);
+    const existente = await client.query(`SELECT 1 FROM usuario WHERE lower(email) = $1`, [emailLider]);
     if (existente.rowCount) {
       throw AppError.conflict("Já existe uma conta com esse e-mail");
     }
@@ -31,7 +56,7 @@ export async function registrarCadastroInicial(input: InscricaoInput) {
       `INSERT INTO usuario (nome, telefone, email, senha_hash, perfil, id_curso, semestre)
        VALUES ($1,$2,$3,$4,'aluno',$5,$6)
        RETURNING ${USUARIO_COLUNAS_PUBLICAS}`,
-      [input.nome_lider, input.telefone, input.email, senha_hash, input.id_curso, input.semestre]
+      [input.nome_lider, input.telefone, emailLider, senha_hash, input.id_curso, input.semestre]
     );
     const lider = liderR.rows[0];
 
@@ -76,27 +101,33 @@ export async function registrarCadastroInicial(input: InscricaoInput) {
     );
 
     for (const colega of input.colegas) {
-      if (!colega.email.trim()) continue;
+      const emailColega = colega.email.trim().toLowerCase();
+      if (!emailColega || emailColega === emailLider) continue;
 
-      const colegaExistente = await client.query<{ id_usuario: number }>(
-        `SELECT id_usuario FROM usuario WHERE email = $1`,
-        [colega.email.trim()]
+      const colegaExistente = await client.query<{ id_usuario: number; perfil: string }>(
+        `SELECT id_usuario, perfil FROM usuario WHERE lower(email) = $1`,
+        [emailColega]
       );
 
       let idColega: number;
       if (colegaExistente.rows[0]) {
+        if (colegaExistente.rows[0].perfil !== "aluno") {
+          throw AppError.conflict(`O e-mail ${emailColega} não pertence a um aluno e não pode entrar na equipe`);
+        }
         idColega = colegaExistente.rows[0].id_usuario;
       } else {
-        const senhaProvisoria = await bcrypt.hash("trocar123", 10);
+        const senhaProvisoria = gerarSenhaProvisoria();
+        const nomeColega = colega.nome?.trim() || emailColega.split("@")[0];
         const novoColegaR = await client.query<{ id_usuario: number }>(
           `INSERT INTO usuario (nome, telefone, email, senha_hash, perfil, id_curso)
            VALUES ($1, NULL, $2, $3, 'aluno', $4) RETURNING id_usuario`,
-          [colega.nome?.trim() || colega.email.split("@")[0], colega.email.trim(), senhaProvisoria, colega.id_curso]
+          [nomeColega, emailColega, await bcrypt.hash(senhaProvisoria, 10), colega.id_curso]
         );
         idColega = novoColegaR.rows[0].id_usuario;
+        colegasCriados.push({ nome: nomeColega, email: emailColega, senha_provisoria: senhaProvisoria });
       }
 
-      // ON CONFLICT: se o colega já estiver nessa equipe por algum motivo, ignora silenciosamente
+      // ON CONFLICT: se o colega aparecer duas vezes na lista, ignora silenciosamente
       await client.query(
         `INSERT INTO equipe_usuario (id_equipe, id_usuario, papel) VALUES ($1,$2,'integrante')
          ON CONFLICT (id_equipe, id_usuario) DO NOTHING`,
@@ -105,7 +136,7 @@ export async function registrarCadastroInicial(input: InscricaoInput) {
     }
 
     await client.query("COMMIT");
-    return { usuario: lider, equipe };
+    return { usuario: lider, equipe, colegasCriados };
   } catch (err) {
     await client.query("ROLLBACK");
     throw err;

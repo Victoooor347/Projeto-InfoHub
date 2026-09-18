@@ -32,58 +32,84 @@
 --      (ordem 7, 8, ...). `equipe.id_etapa_atual`, `tarefa.id_etapa` e
 --      `anotacoes.id_etapa` agora usam FK composta (id_etapa, id_equipe)
 --      para garantir que uma equipe nunca aponte para a etapa de outra.
---      Ver src/db/migrations/002_etapas_por_equipe.ts para a migração que
+--      Ver src/db/migrations/002_etapas_por_equipe.sql para a migração que
 --      transforma um banco já em produção (schema antigo) neste formato
 --      sem perder dados.
+--   8. Este arquivo é IDEMPOTENTE: pode rodar `db:migrate` quantas vezes
+--      quiser. Ele só cria o que ainda não existe e nunca apaga dados.
+--   9. Os dados de referência (cursos e status_tarefa) são inseridos AQUI,
+--      não no seed — o sistema não funciona sem eles, com ou sem demo.
+--  10. E-mail é único sem diferenciar maiúsculas (índice em lower(email)).
 -- =====================================================================
 
 -- ---------- tipos ENUM ----------
-CREATE TYPE curso_nome AS ENUM (
-  'Sistemas de Informação',
-  'Direito',
-  'Administração',
-  'Gastronomia',
-  'Ciências Contábeis',
-  'Ontopsicologia',
-  'Hotelaria',
-  'Pedagogia'
-);
+DO $$ BEGIN
+  CREATE TYPE curso_nome AS ENUM (
+    'Sistemas de Informação',
+    'Direito',
+    'Administração',
+    'Gastronomia',
+    'Ciências Contábeis',
+    'Ontopsicologia',
+    'Hotelaria',
+    'Pedagogia'
+  );
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $$;
 
-CREATE TYPE IF NOT EXISTS  perfil_usuario AS ENUM ('aluno', 'mentor', 'admin');
+DO $$ BEGIN
+  CREATE TYPE perfil_usuario AS ENUM ('aluno', 'mentor', 'admin');
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $$;
 
-CREATE TYPE area_ideia AS ENUM (
-  'Saúde',
-  'Educação',
-  'Meio Ambiente',
-  'Tecnologia',
-  'Entretenimento',
-  'Serviços',
-  'Outro'
-);
+DO $$ BEGIN
+  CREATE TYPE area_ideia AS ENUM (
+    'Saúde',
+    'Educação',
+    'Meio Ambiente',
+    'Tecnologia',
+    'Entretenimento',
+    'Serviços',
+    'Outro'
+  );
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $$;
 
-CREATE TYPE estagio_ideia AS ENUM ('Apenas ideia', 'Validação', 'Prototipagem', 'Lançamento');
+DO $$ BEGIN
+  CREATE TYPE estagio_ideia AS ENUM ('Apenas ideia', 'Validação', 'Prototipagem', 'Lançamento');
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $$;
 
-CREATE TYPE como_conheceu AS ENUM ('Redes sociais', 'Amigos', 'Eventos', 'Outros');
+DO $$ BEGIN
+  CREATE TYPE como_conheceu AS ENUM ('Redes sociais', 'Amigos', 'Eventos', 'Outros');
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $$;
 
-CREATE TYPE papel_equipe AS ENUM ('lider', 'integrante');
+DO $$ BEGIN
+  CREATE TYPE papel_equipe AS ENUM ('lider', 'integrante');
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $$;
 
-CREATE TYPE status_tarefa_desc AS ENUM (
-  'Pendente',
-  'Em andamento',
-  'Entregue',
-  'Atrasada',
-  'Aprovada',
-  'Reprovada/Ajustar'
-);
+DO $$ BEGIN
+  CREATE TYPE status_tarefa_desc AS ENUM (
+    'Pendente',
+    'Em andamento',
+    'Entregue',
+    'Atrasada',
+    'Aprovada',
+    'Reprovada/Ajustar'
+  );
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $$;
 
 -- ---------- cursos ----------
-CREATE TABLE cursos (
+CREATE TABLE IF NOT EXISTS cursos (
   id_curso SERIAL PRIMARY KEY,
   nome curso_nome NOT NULL UNIQUE
 );
 
 -- ---------- usuario ----------
-CREATE TABLE usuario (
+CREATE TABLE IF NOT EXISTS usuario (
   id_usuario SERIAL PRIMARY KEY,
   nome VARCHAR(100) NOT NULL,
   telefone VARCHAR(20),
@@ -95,7 +121,9 @@ CREATE TABLE usuario (
   ativo BOOLEAN NOT NULL DEFAULT TRUE,
   criado_em TIMESTAMPTZ NOT NULL DEFAULT now()
 );
-CREATE INDEX idx_usuario_perfil ON usuario (perfil);
+CREATE INDEX IF NOT EXISTS idx_usuario_perfil ON usuario (perfil);
+-- impede "Joao@x.com" e "joao@x.com" como duas contas diferentes
+CREATE UNIQUE INDEX IF NOT EXISTS idx_usuario_email_lower ON usuario (lower(email));
 
 -- ---------- equipe ----------
 -- id_etapa_atual é fisicamente opcional só para quebrar a referência
@@ -107,7 +135,7 @@ CREATE INDEX idx_usuario_perfil ON usuario (perfil);
 -- id_etapa_atual = <etapa de ordem 1>. Uma FK composta com NULL em
 -- qualquer lado é considerada satisfeita pelo Postgres, então isso não
 -- exige DEFERRABLE.
-CREATE TABLE equipe (
+CREATE TABLE IF NOT EXISTS equipe (
   id_equipe SERIAL PRIMARY KEY,
   nome_equipe VARCHAR(100) NOT NULL,
   nome_ideia VARCHAR(100) NOT NULL,
@@ -121,7 +149,7 @@ CREATE TABLE equipe (
   pronto_para_inovamf BOOLEAN NOT NULL DEFAULT FALSE,
   criado_em TIMESTAMPTZ NOT NULL DEFAULT now()
 );
-CREATE INDEX idx_equipe_etapa_atual ON equipe (id_etapa_atual);
+CREATE INDEX IF NOT EXISTS idx_equipe_etapa_atual ON equipe (id_etapa_atual);
 
 -- ---------- etapa ----------
 -- Não é mais um catálogo global fixo de 6 linhas — cada equipe tem sua
@@ -129,7 +157,7 @@ CREATE INDEX idx_equipe_etapa_atual ON equipe (id_etapa_atual);
 -- equipe (1, 2, 3, ...). As 6 primeiras (ordem 1-6, padrao=true) nascem
 -- junto com a equipe, com os nomes da cartilha; o mentor da equipe pode
 -- inserir etapas extras depois (ordem 7+, padrao=false).
-CREATE TABLE etapa (
+CREATE TABLE IF NOT EXISTS etapa (
   id_etapa SERIAL PRIMARY KEY,
   id_equipe INT NOT NULL REFERENCES equipe (id_equipe) ON DELETE CASCADE,
   ordem INT NOT NULL CHECK (ordem >= 1),
@@ -141,27 +169,30 @@ CREATE TABLE etapa (
   UNIQUE (id_equipe, ordem),
   UNIQUE (id_etapa, id_equipe) -- necessário para ser alvo de FK composta (ver abaixo)
 );
-CREATE INDEX idx_etapa_equipe ON etapa (id_equipe);
+CREATE INDEX IF NOT EXISTS idx_etapa_equipe ON etapa (id_equipe);
 
 -- agora que `etapa` existe, fecha a FK composta de equipe.id_etapa_atual
 -- (garante que uma equipe só pode apontar para uma etapa DELA MESMA)
-ALTER TABLE equipe
-  ADD CONSTRAINT fk_equipe_etapa_atual
-  FOREIGN KEY (id_etapa_atual, id_equipe) REFERENCES etapa (id_etapa, id_equipe);
+DO $$ BEGIN
+  ALTER TABLE equipe
+    ADD CONSTRAINT fk_equipe_etapa_atual
+    FOREIGN KEY (id_etapa_atual, id_equipe) REFERENCES etapa (id_etapa, id_equipe);
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $$;
 
 -- ---------- equipe_usuario ----------
-CREATE TABLE equipe_usuario (
+CREATE TABLE IF NOT EXISTS equipe_usuario (
   id_equipe_usuario SERIAL PRIMARY KEY,
   id_equipe INT NOT NULL REFERENCES equipe (id_equipe) ON DELETE CASCADE,
   id_usuario INT NOT NULL REFERENCES usuario (id_usuario) ON DELETE CASCADE,
   papel papel_equipe NOT NULL,
   UNIQUE (id_equipe, id_usuario)
 );
-CREATE INDEX idx_equipe_usuario_usuario ON equipe_usuario (id_usuario);
-CREATE INDEX idx_equipe_usuario_equipe ON equipe_usuario (id_equipe);
+CREATE INDEX IF NOT EXISTS idx_equipe_usuario_usuario ON equipe_usuario (id_usuario);
+CREATE INDEX IF NOT EXISTS idx_equipe_usuario_equipe ON equipe_usuario (id_equipe);
 
 -- ---------- status_tarefa ----------
-CREATE TABLE status_tarefa (
+CREATE TABLE IF NOT EXISTS status_tarefa (
   id_status SERIAL PRIMARY KEY,
   descricao status_tarefa_desc NOT NULL UNIQUE
 );
@@ -171,7 +202,7 @@ CREATE TABLE status_tarefa (
 -- garante em nível de banco que uma tarefa só pode apontar para uma etapa
 -- DA MESMA equipe dela (impossível referenciar a etapa 3 da equipe B numa
 -- tarefa da equipe A).
-CREATE TABLE tarefa (
+CREATE TABLE IF NOT EXISTS tarefa (
   id_tarefa SERIAL PRIMARY KEY,
   titulo VARCHAR(100) NOT NULL,
   descricao TEXT NOT NULL,
@@ -182,11 +213,11 @@ CREATE TABLE tarefa (
   criado_em TIMESTAMPTZ NOT NULL DEFAULT now(),
   FOREIGN KEY (id_etapa, id_equipe) REFERENCES etapa (id_etapa, id_equipe)
 );
-CREATE INDEX idx_tarefa_equipe ON tarefa (id_equipe);
-CREATE INDEX idx_tarefa_status ON tarefa (id_status);
+CREATE INDEX IF NOT EXISTS idx_tarefa_equipe ON tarefa (id_equipe);
+CREATE INDEX IF NOT EXISTS idx_tarefa_status ON tarefa (id_status);
 
 -- ---------- entregavel ----------
-CREATE TABLE entregavel (
+CREATE TABLE IF NOT EXISTS entregavel (
   id_entregavel SERIAL PRIMARY KEY,
   arquivo_url VARCHAR(255) NOT NULL,
   tipo VARCHAR(50),
@@ -194,11 +225,11 @@ CREATE TABLE entregavel (
   id_tarefa INT NOT NULL REFERENCES tarefa (id_tarefa) ON DELETE CASCADE,
   id_usuario INT NOT NULL REFERENCES usuario (id_usuario)
 );
-CREATE INDEX idx_entregavel_tarefa ON entregavel (id_tarefa);
+CREATE INDEX IF NOT EXISTS idx_entregavel_tarefa ON entregavel (id_tarefa);
 
 -- ---------- anotacoes ----------
 -- mesma lógica de FK composta que tarefa, pelo mesmo motivo.
-CREATE TABLE anotacoes (
+CREATE TABLE IF NOT EXISTS anotacoes (
   id_anotacao SERIAL PRIMARY KEY,
   descricao TEXT NOT NULL,
   data_registro TIMESTAMPTZ NOT NULL DEFAULT now(),
@@ -207,21 +238,46 @@ CREATE TABLE anotacoes (
   id_etapa INT NOT NULL,
   FOREIGN KEY (id_etapa, id_equipe) REFERENCES etapa (id_etapa, id_equipe)
 );
-CREATE INDEX idx_anotacoes_equipe ON anotacoes (id_equipe);
+CREATE INDEX IF NOT EXISTS idx_anotacoes_equipe ON anotacoes (id_equipe);
 
 -- ---------- lembrete ----------
-CREATE TABLE lembrete (
+CREATE TABLE IF NOT EXISTS lembrete (
   id_lembrete SERIAL PRIMARY KEY,
   data_programada DATE NOT NULL,
   enviado BOOLEAN NOT NULL DEFAULT FALSE,
   id_tarefa INT NOT NULL REFERENCES tarefa (id_tarefa) ON DELETE CASCADE
 );
-CREATE INDEX idx_lembrete_tarefa ON lembrete (id_tarefa);
+CREATE INDEX IF NOT EXISTS idx_lembrete_tarefa ON lembrete (id_tarefa);
 
 -- ---------- equipe_mentor (extensão N:N) ----------
-CREATE TABLE equipe_mentor (
+CREATE TABLE IF NOT EXISTS equipe_mentor (
   id_equipe INT NOT NULL REFERENCES equipe (id_equipe) ON DELETE CASCADE,
   id_usuario INT NOT NULL REFERENCES usuario (id_usuario) ON DELETE CASCADE,
   criado_em TIMESTAMPTZ NOT NULL DEFAULT now(),
   PRIMARY KEY (id_equipe, id_usuario)
 );
+
+-- =====================================================================
+-- Dados de referência (obrigatórios para o sistema funcionar)
+-- ON CONFLICT DO NOTHING: rodar de novo não duplica nada.
+-- =====================================================================
+INSERT INTO cursos (nome) VALUES
+  ('Sistemas de Informação'),
+  ('Direito'),
+  ('Administração'),
+  ('Gastronomia'),
+  ('Ciências Contábeis'),
+  ('Ontopsicologia'),
+  ('Hotelaria'),
+  ('Pedagogia')
+ON CONFLICT (nome) DO NOTHING;
+
+-- a ordem importa: 1 Pendente ... 6 Reprovada/Ajustar
+INSERT INTO status_tarefa (descricao) VALUES
+  ('Pendente'),
+  ('Em andamento'),
+  ('Entregue'),
+  ('Atrasada'),
+  ('Aprovada'),
+  ('Reprovada/Ajustar')
+ON CONFLICT (descricao) DO NOTHING;

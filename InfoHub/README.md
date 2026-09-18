@@ -31,8 +31,8 @@ createdb infohub
 cd infohub-backend
 npm install
 cp .env.example .env          # ajuste DATABASE_URL/JWT_SECRET se precisar
-npm run db:migrate            # cria as tabelas
-npm run db:seed               # popula com dados de demonstração
+npm run db:migrate            # cria tabelas + cursos + status (pode rodar de novo sem medo)
+npm run db:seed               # OPCIONAL: dados de demonstração (só em banco vazio)
 npm run dev                   # sobe a API em http://localhost:3333
 ```
 
@@ -59,20 +59,21 @@ não tem mais dados mockados, ele busca tudo da API de verdade.
 | Aluno líder | `bruno.kellermann@aluno.amf.br` | `aluno123` |
 | Aluna integrante | `camila.restelatto@aluno.amf.br` | `aluno123` |
 
-## Se o banco já estava em produção ANTES da mudança de etapas dinâmicas
+## Produção (Coolify)
 
-Se você já tinha um banco rodando com a versão anterior (etapa como catálogo fixo de 6),
-**não rode `db:migrate` de novo** (ele recria do zero). Em vez disso:
+No terminal do container do backend, depois do deploy:
 
 ```bash
-cd infohub-backend
-npm run db:migrate:002-etapas-por-equipe
+npm run db:migrate:prod     # idempotente: só cria o que falta, nunca apaga dados
+npm run db:seed:prod        # opcional, só na primeira vez (dados de demonstração)
 ```
 
-Isso transforma os dados existentes pro novo formato sem apagar nada — ver
-`infohub-backend/src/db/migrations/002_etapas_por_equipe.sql` e
-`etapas-dinamicas-implementacao.md` (na raiz) para os detalhes de como isso funciona e como
-foi testado.
+**Nunca** rode `db:reset` / `db:fresh` no servidor — eles apagam o banco inteiro.
+Se rodar o seed em produção, troque a senha das contas de demonstração, porque elas
+estão documentadas acima.
+
+Banco criado com a versão ANTIGA do schema (etapa como catálogo fixo de 6)? Aplique uma
+única vez `src/db/migrations/002_etapas_por_equipe.sql` com `psql`. Banco novo não precisa.
 
 ## O que já funciona hoje
 
@@ -82,20 +83,18 @@ foi testado.
   múltiplos por equipe, relatórios com exportação CSV
 - Área do aluno: acompanhar a jornada da própria equipe, enviar entregáveis (só o líder)
 - **Etapas dinâmicas por equipe**: a jornada padrão tem 6 etapas, mas o mentor de cada equipe
-  pode acrescentar etapas extras só para ela — ver `etapas-dinamicas-implementacao.md`
+  pode acrescentar etapas extras só para ela
 
 ## O que ainda falta para produção
 
 - Envio de e-mail de verdade (hoje os lembretes só ficam registrados no banco)
 - Upload real de arquivo (hoje `entregavel.arquivo_url` guarda um link/nome, não o binário)
 - Refresh token (o JWT expira em 7 dias sem renovação automática)
+- Troca de senha pelo próprio usuário (colegas criados na inscrição recebem uma senha
+  provisória aleatória, mostrada uma única vez ao líder)
 
 ## Outros documentos neste pacote
 
-- **`respostas-professor-banco.md`** — respostas às perguntas de modelagem de banco de dados,
-  com base no código real (não em teoria) — inclui uma lista de gaps genuínos identificados
-- **`etapas-dinamicas-implementacao.md`** — como a mudança de etapas por equipe foi
-  implementada, testada, e a migração de dados para bancos já em produção
 - **`infohub-backend/README.md`** — referência completa de endpoints da API e decisões de
   modelagem do banco
 - **`infohub-frontend/README.md`** — estrutura das telas e como cada regra de negócio foi

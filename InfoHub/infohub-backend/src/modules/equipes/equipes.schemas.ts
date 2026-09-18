@@ -29,8 +29,26 @@ export const avancarEtapaSchema = z.object({
   delta: z.union([z.literal(1), z.literal(-1)], { error: "delta precisa ser 1 ou -1" }),
 });
 
+// Q3: o pitch é SEMPRE um link do YouTube. Validar o domínio também impede
+// links "javascript:..." ou de sites aleatórios aparecendo na tela do admin.
+const DOMINIOS_YOUTUBE = ["youtube.com", "www.youtube.com", "m.youtube.com", "youtu.be"];
+
 export const atualizarLinkPitchSchema = z.object({
-  link_pitch: z.url({ error: "Informe uma URL válida (ex.: link do YouTube)" }),
+  link_pitch: z
+    .string()
+    .trim()
+    .max(255)
+    .refine(
+      (valor) => {
+        try {
+          const url = new URL(valor);
+          return (url.protocol === "https:" || url.protocol === "http:") && DOMINIOS_YOUTUBE.includes(url.hostname);
+        } catch {
+          return false;
+        }
+      },
+      { error: "Informe um link do YouTube (ex.: https://youtu.be/...)" }
+    ),
 });
 
 export const adicionarMentorSchema = z.object({
