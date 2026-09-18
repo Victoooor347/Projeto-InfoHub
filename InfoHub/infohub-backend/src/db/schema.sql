@@ -49,7 +49,7 @@ CREATE TYPE curso_nome AS ENUM (
   'Pedagogia'
 );
 
-CREATE TYPE perfil_usuario AS ENUM ('aluno', 'mentor', 'admin');
+CREATE TYPE IF NOT EXISTS  perfil_usuario AS ENUM ('aluno', 'mentor', 'admin');
 
 CREATE TYPE area_ideia AS ENUM (
   'Saúde',
