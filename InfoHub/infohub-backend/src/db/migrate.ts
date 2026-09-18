@@ -10,14 +10,20 @@ async function migrate() {
 
   const client = await pool.connect();
   try {
+    // Banco compartilhado: cada dupla cria o PRÓPRIO schema (orientação do
+    // professor). IF NOT EXISTS = seguro rodar a cada deploy. O nome já foi
+    // validado em config/db.ts (só letras, números e _), e vai entre aspas.
+    if (DB_SCHEMA) {
+      await client.query(`CREATE SCHEMA IF NOT EXISTS "${DB_SCHEMA}"`);
+    }
+
     // Confere ONDE as tabelas vão ser criadas antes de criar qualquer coisa.
     // current_schema() é null quando nenhum schema do search_path existe.
     const r = await client.query<{ atual: string | null }>(`SELECT current_schema() AS atual`);
     const atual = r.rows[0]?.atual;
     if (DB_SCHEMA && atual !== DB_SCHEMA) {
       throw new Error(
-        `O schema "${DB_SCHEMA}" não existe neste banco (ou o usuário não tem acesso a ele). ` +
-          `Peça ao professor para criá-lo — nada foi alterado.`
+        `Não foi possível usar o schema "${DB_SCHEMA}" (atual: ${atual}). Nada foi alterado.`
       );
     }
     console.log(`Schema de destino: ${atual}`);
