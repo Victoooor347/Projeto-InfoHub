@@ -12,7 +12,7 @@ async function start() {
     process.exit(1);
   }
 
-  app.listen(env.PORT, () => {
+  app.listen(env.PORT, '0.0.0.0', () => {
     console.log(`InfoHub API rodando em http://localhost:${env.PORT}`);
     console.log(`Healthcheck: http://localhost:${env.PORT}/health`);
   });
