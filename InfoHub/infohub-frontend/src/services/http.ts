@@ -7,7 +7,12 @@
  * token expira.
  */
 
-const BASE_URL = (import.meta.env.VITE_API_URL ?? "http://localhost:3333").replace(/\/+$/, "");
+// Em produção (deploy único) o frontend é servido pelo próprio backend, então
+// a API está na MESMA origem: base vazia = chamadas relativas ("/api/...").
+// Em desenvolvimento (npm run dev, porta 5173) continua apontando pro :3333.
+const BASE_URL = (
+  import.meta.env.VITE_API_URL ?? (import.meta.env.PROD ? "" : "http://localhost:3333")
+).replace(/\/+$/, "");
 
 const CHAVE_TOKEN = "infohub:token";
 

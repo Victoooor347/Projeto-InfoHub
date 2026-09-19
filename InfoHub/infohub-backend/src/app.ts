@@ -1,3 +1,5 @@
+import fs from "node:fs";
+import path from "node:path";
 import cors from "cors";
 import express from "express";
 import { env } from "./config/env";
@@ -42,6 +44,26 @@ app.use("/api/entregaveis", entregaveisRouter);
 app.use("/api/anotacoes", anotacoesRouter);
 app.use("/api/lembretes", lembretesRouter);
 app.use("/api/inscricao", inscricaoRouter);
+
+// ---------- frontend (React já compilado) ----------
+// Deploy único: o build do Vite (infohub-frontend/dist) é servido por este
+// mesmo Express. Funciona tanto em src/ (tsx) quanto em dist/ (node), porque
+// os dois ficam um nível abaixo de infohub-backend/.
+const FRONTEND_DIST = path.resolve(__dirname, "../../infohub-frontend/dist");
+
+if (fs.existsSync(path.join(FRONTEND_DIST, "index.html"))) {
+  app.use(express.static(FRONTEND_DIST));
+
+  // SPA: qualquer GET que não seja da API (ex.: F5 em /admin/equipes) devolve
+  // o index.html e o React Router resolve a tela. Sem wildcard "*" por causa
+  // do path-to-regexp do Express 5.
+  app.use((req, res, next) => {
+    if (req.method !== "GET" || req.path.startsWith("/api/") || req.path === "/health") return next();
+    res.sendFile(path.join(FRONTEND_DIST, "index.html"));
+  });
+} else {
+  console.warn(`Build do frontend não encontrado em ${FRONTEND_DIST} — servindo só a API.`);
+}
 
 // 404 — sem path (evita o bug de wildcard "*"/"/*" do path-to-regexp no Express 5)
 app.use((req, res) => {

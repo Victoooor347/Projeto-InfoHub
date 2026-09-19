@@ -1,0 +1,16 @@
+{
+  "name": "infohub",
+  "private": true,
+  "version": "1.0.0",
+  "description": "InfoHub -> InovAMF: frontend + backend num único deploy (o Express serve o build do React)",
+  "scripts": {
+    "build": "npm ci --prefix infohub-frontend --include=dev && npm run build --prefix infohub-frontend && npm ci --prefix infohub-backend --include=dev && npm run build --prefix infohub-backend",
+    "start": "npm start --prefix infohub-backend",
+    "db:migrate": "npm run db:migrate:prod --prefix infohub-backend",
+    "db:migrate:prod": "npm run db:migrate:prod --prefix infohub-backend",
+    "db:seed:prod": "npm run db:seed:prod --prefix infohub-backend"
+  },
+  "engines": {
+    "node": "22"
+  }
+}
