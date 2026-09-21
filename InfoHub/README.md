@@ -32,7 +32,7 @@ cd infohub-backend
 npm install
 cp .env.example .env          # ajuste DATABASE_URL/JWT_SECRET se precisar
 npm run db:migrate            # cria tabelas + cursos + status (pode rodar de novo sem medo)
-npm run db:seed               # OPCIONAL: dados de demonstração (só em banco vazio)
+npm run db:seed               # recria o cenário de demonstração (apaga os dados anteriores)
 npm run dev                   # sobe a API em http://localhost:3333
 ```
 
@@ -50,30 +50,40 @@ npm run dev                   # sobe em http://localhost:5173
 Abra `http://localhost:5173` no navegador. **O backend precisa estar rodando** — o frontend
 não tem mais dados mockados, ele busca tudo da API de verdade.
 
-## Contas de demonstração (criadas pelo `db:seed`)
+## Cenário de demonstração (G1)
+
+O seed roda em **todo deploy** (comando pós-deploy `npm run db:setup` = migrate + seed) e
+recria sempre o mesmo cenário no schema da dupla:
+
+- 3 equipes com 3 integrantes cada, 1 líder por equipe (EcoRota, SaborLocal, MenteAtiva)
+- 1 administradora e 4 mentores: Diego mentora EcoRota e SaborLocal; Luiza mentora
+  MenteAtiva; Marcos e Patrícia ainda sem equipe
+- EcoRota e SaborLocal com a Etapa 1 aprovada, cursando a Etapa 2
+- MenteAtiva com uma tarefa de prazo atrasado
+
+Como o seed limpa os dados antes de inserir, **o que for criado pelo sistema some no próximo deploy**.
 
 | Perfil | E-mail | Senha |
 |---|---|---|
 | Administradora | `renata.bock@infohub.amf.br` | `admin123` |
-| Mentor | `diego.casagrande@infohub.amf.br` | `mentor123` |
-| Aluno líder | `bruno.kellermann@aluno.amf.br` | `aluno123` |
-| Aluna integrante | `camila.restelatto@aluno.amf.br` | `aluno123` |
+| Mentor (EcoRota, SaborLocal) | `diego.casagrande@infohub.amf.br` | `mentor123` |
+| Mentora (MenteAtiva) | `luiza.andreatta@infohub.amf.br` | `mentor123` |
+| Mentores sem equipe | `marcos.tonet@infohub.amf.br`, `patricia.dallacosta@infohub.amf.br` | `mentor123` |
+| Líder EcoRota | `bruno.kellermann@aluno.amf.br` | `aluno123` |
+| Líder SaborLocal | `fernanda.locatelli@aluno.amf.br` | `aluno123` |
+| Líder MenteAtiva (atrasada) | `helena.zortea@aluno.amf.br` | `aluno123` |
+| Integrante EcoRota | `camila.restelatto@aluno.amf.br` | `aluno123` |
 
 ## Produção (Coolify)
 
-No terminal do container do backend, depois do deploy:
+Um único resource (Base Directory `/InfoHub`): o Express serve a API e o build do React.
+Comando pós-deploy:
 
 ```bash
-npm run db:migrate:prod     # idempotente: só cria o que falta, nunca apaga dados
-npm run db:seed:prod        # opcional, só na primeira vez (dados de demonstração)
+npm run db:setup     # cria schema e tabelas (idempotente) + recria o cenário de demonstração
 ```
 
-**Nunca** rode `db:reset` / `db:fresh` no servidor — eles apagam o banco inteiro.
-Se rodar o seed em produção, troque a senha das contas de demonstração, porque elas
-estão documentadas acima.
-
-Banco criado com a versão ANTIGA do schema (etapa como catálogo fixo de 6)? Aplique uma
-única vez `src/db/migrations/002_etapas_por_equipe.sql` com `psql`. Banco novo não precisa.
+**Nunca** rode `db:reset` / `db:fresh` no servidor.
 
 ## O que já funciona hoje
 

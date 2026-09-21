@@ -8,7 +8,9 @@
     "start": "npm start --prefix infohub-backend",
     "db:migrate": "npm run db:migrate:prod --prefix infohub-backend",
     "db:migrate:prod": "npm run db:migrate:prod --prefix infohub-backend",
-    "db:seed:prod": "npm run db:seed:prod --prefix infohub-backend"
+    "db:seed": "npm run db:seed:prod --prefix infohub-backend",
+    "db:seed:prod": "npm run db:seed:prod --prefix infohub-backend",
+    "db:setup": "npm run db:migrate && npm run db:seed"
   },
   "engines": {
     "node": "22"
