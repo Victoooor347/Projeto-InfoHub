@@ -281,6 +281,29 @@ CREATE TABLE IF NOT EXISTS equipe_mentor (
   PRIMARY KEY (id_equipe, id_usuario)
 );
 
+-- ---------- senha provisória ----------
+-- TRUE para contas cuja senha foi definida por outra pessoa (colegas criados
+-- na inscrição, mentores/admins criados pelo admin): o sistema obriga a
+-- trocar no primeiro acesso.
+ALTER TABLE usuario ADD COLUMN IF NOT EXISTS deve_trocar_senha BOOLEAN NOT NULL DEFAULT FALSE;
+
+-- ---------- sessao (refresh tokens) ----------
+-- Cada login abre uma sessão de LONGA duração, guardada num cookie httpOnly.
+-- O token de acesso (JWT) dura poucos minutos e é renovado com ela.
+-- Só o HASH (SHA-256) do refresh token fica no banco: um vazamento da tabela
+-- não permite entrar na conta de ninguém. A cada renovação a sessão antiga é
+-- revogada e uma nova é criada (rotação), então um token roubado e já usado
+-- é detectado.
+CREATE TABLE IF NOT EXISTS sessao (
+  id_sessao SERIAL PRIMARY KEY,
+  id_usuario INT NOT NULL REFERENCES usuario (id_usuario) ON DELETE CASCADE,
+  token_hash CHAR(64) NOT NULL UNIQUE,
+  expira_em TIMESTAMPTZ NOT NULL,
+  criado_em TIMESTAMPTZ NOT NULL DEFAULT now(),
+  revogado_em TIMESTAMPTZ
+);
+CREATE INDEX IF NOT EXISTS idx_sessao_usuario ON sessao (id_usuario);
+
 -- =====================================================================
 -- Dados de referência (obrigatórios para o sistema funcionar)
 -- ON CONFLICT DO NOTHING: rodar de novo não duplica nada.

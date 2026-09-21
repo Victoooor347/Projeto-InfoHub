@@ -1,5 +1,5 @@
 import { NavLink, Outlet, useNavigate } from "react-router-dom";
-import { Home, ListChecks, LogOut } from "lucide-react";
+import { Home, KeyRound, ListChecks, LogOut } from "lucide-react";
 import { Logo } from "../components/Logo";
 import { FaixaErro, TelaCarregando } from "../components/Kit";
 import { useAuth } from "../store/AuthContext";
@@ -37,6 +37,13 @@ export function AlunoLayout() {
                 .map((n) => n[0])
                 .join("")}
             </div>
+            <button
+              onClick={() => navigate("/trocar-senha")}
+              className="text-text-soft hover:text-ink transition p-2 rounded-lg hover:bg-paper-alt"
+              title="Trocar senha"
+            >
+              <KeyRound size={18} />
+            </button>
             <button
               onClick={handleSair}
               className="text-text-soft hover:text-ink transition p-2 rounded-lg hover:bg-paper-alt"

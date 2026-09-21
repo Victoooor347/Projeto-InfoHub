@@ -28,6 +28,8 @@ export interface Usuario {
   semestre: number | null;
   ativo: boolean;
   criado_em: string;
+  /** Senha provisória: o sistema obriga a trocar antes de usar. */
+  deve_trocar_senha?: boolean;
 }
 
 /**

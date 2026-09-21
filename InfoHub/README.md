@@ -109,7 +109,11 @@ e-mail só aparece no log do container.
 
 ## O que já funciona hoje
 
-- Login de verdade (JWT), com sessão restaurada ao recarregar a página
+- Login com token de acesso curto (15 min) + refresh token de 7 dias em cookie httpOnly,
+  renovado automaticamente e revogado no logout ou na troca de senha
+- Troca de senha pelo próprio usuário; senha provisória (colegas da inscrição, contas criadas
+  pelo admin) obriga a troca no primeiro acesso
+- Upload de arquivos (até 5 MB, guardados no banco) e lembretes por e-mail (automáticos e manuais)
 - Cadastro inicial público (formulário → cria conta + equipe automaticamente)
 - Painel do admin/mentor: Kanban, tarefas, aprovação de entregas, anotações internas, mentores
   múltiplos por equipe, relatórios com exportação CSV
@@ -119,11 +123,8 @@ e-mail só aparece no log do container.
 
 ## O que ainda falta para produção
 
-- Envio de e-mail de verdade (hoje os lembretes só ficam registrados no banco)
-- Upload real de arquivo (hoje `entregavel.arquivo_url` guarda um link/nome, não o binário)
-- Refresh token (o JWT expira em 7 dias sem renovação automática)
-- Troca de senha pelo próprio usuário (colegas criados na inscrição recebem uma senha
-  provisória aleatória, mostrada uma única vez ao líder)
+- "Esqueci minha senha" (redefinição por e-mail) — hoje, quem esquece precisa de ajuda do admin
+- Rate limiting no login e logs estruturados
 
 ## Outros documentos neste pacote
 

@@ -190,10 +190,11 @@ export async function listarIntegrantesDaEquipe(id_equipe: number): Promise<Inte
     semestre: number | null;
     ativo: boolean;
     criado_em: string;
+    deve_trocar_senha: boolean;
   }>(
     `SELECT eu.id_equipe_usuario, eu.id_equipe, eu.papel,
             u.id_usuario, u.nome, u.telefone, u.email, u.perfil,
-            u.id_curso, u.semestre, u.ativo, u.criado_em
+            u.id_curso, u.semestre, u.ativo, u.criado_em, u.deve_trocar_senha
      FROM equipe_usuario eu
      JOIN usuario u ON u.id_usuario = eu.id_usuario
      WHERE eu.id_equipe = $1
@@ -215,6 +216,7 @@ export async function listarIntegrantesDaEquipe(id_equipe: number): Promise<Inte
       semestre: row.semestre,
       ativo: row.ativo,
       criado_em: row.criado_em,
+      deve_trocar_senha: row.deve_trocar_senha,
     },
   }));
 }

@@ -11,7 +11,10 @@ const envSchema = z.object({
   DATABASE_URL: z.url({ error: "DATABASE_URL precisa ser uma URL de conexão Postgres válida" }),
   PORT: z.coerce.number().int().positive().default(3333),
   JWT_SECRET: z.string().min(10, { error: "JWT_SECRET precisa ter pelo menos 10 caracteres" }),
-  JWT_EXPIRES_IN: z.string().default("7d"),
+  /** Duração do token de ACESSO (curto). A sessão é renovada pelo refresh token. */
+  JWT_EXPIRES_IN: z.string().default("15m"),
+  /** Duração da sessão (refresh token, em cookie httpOnly). */
+  REFRESH_TOKEN_DIAS: z.coerce.number().int().min(1).max(90).default(7),
   CORS_ORIGIN: z.string().default("http://localhost:5173"),
   NODE_ENV: z.enum(["development", "test", "production"]).default("development"),
 

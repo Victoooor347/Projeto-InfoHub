@@ -21,7 +21,10 @@ import { arquivosRouter } from "./modules/arquivos/arquivos.routes";
 
 export const app = express();
 
-app.use(cors({ origin: env.CORS_ORIGIN }));
+// atrás do proxy do Coolify: faz req.secure refletir o HTTPS de fora (cookie "secure")
+app.set("trust proxy", 1);
+// credentials: o cookie de sessão (refresh token) precisa ir junto em dev (portas diferentes)
+app.use(cors({ origin: env.CORS_ORIGIN, credentials: true }));
 // 10 MB: comporta um arquivo de até 5 MB em base64 (≈ +33%) no envio de entregáveis
 app.use(express.json({ limit: "10mb" }));
 

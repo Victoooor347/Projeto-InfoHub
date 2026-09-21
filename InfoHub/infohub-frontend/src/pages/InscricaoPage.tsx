@@ -35,7 +35,7 @@ export function InscricaoPage() {
       await recarregar();
       navigate("/admin/equipes");
     } else {
-      entrarComToken(resposta.token, resposta.usuario);
+      if (resposta.token) entrarComToken(resposta.token, resposta.usuario);
       navigate("/aluno");
     }
   }
@@ -138,7 +138,7 @@ export function InscricaoPage() {
             <>
               <p className="text-text-soft text-sm mt-4 text-left">
                 Criamos contas para os integrantes abaixo. <strong>Anote e repasse as senhas agora</strong> — elas
-                não serão mostradas de novo.
+                não serão mostradas de novo. No primeiro acesso, cada um vai criar a própria senha.
               </p>
               <ul className="mt-3 space-y-2 text-left">
                 {colegasNovos.map((c) => (

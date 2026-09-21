@@ -1,5 +1,5 @@
 import { NavLink, Outlet, useNavigate } from "react-router-dom";
-import { LayoutDashboard, KanbanSquare, ListChecks, BarChart3, LogOut, GraduationCap, Users } from "lucide-react";
+import { LayoutDashboard, KanbanSquare, ListChecks, BarChart3, LogOut, GraduationCap, Users, KeyRound } from "lucide-react";
 import { Logo } from "../components/Logo";
 import { FaixaErro, TelaCarregando } from "../components/Kit";
 import { useAuth } from "../store/AuthContext";
@@ -67,6 +67,12 @@ export function AdminLayout() {
               </p>
             </div>
           </div>
+          <button
+            onClick={() => navigate("/trocar-senha")}
+            className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium text-white/60 hover:text-white hover:bg-white/5 transition"
+          >
+            <KeyRound size={17} /> Trocar senha
+          </button>
           <button
             onClick={handleSair}
             className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium text-white/60 hover:text-white hover:bg-white/5 transition"

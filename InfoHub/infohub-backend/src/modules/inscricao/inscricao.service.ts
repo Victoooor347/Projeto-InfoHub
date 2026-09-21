@@ -38,7 +38,7 @@ function gerarSenhaProvisoria(tamanho = 10): string {
   return senha;
 }
 
-export async function registrarCadastroInicial(input: InscricaoInput) {
+export async function registrarCadastroInicial(input: InscricaoInput, opcoes: { porAdmin?: boolean } = {}) {
   const emailLider = input.email.trim().toLowerCase();
   const colegasCriados: ColegaCriado[] = [];
 
@@ -53,10 +53,11 @@ export async function registrarCadastroInicial(input: InscricaoInput) {
 
     const senha_hash = await bcrypt.hash(input.senha, 10);
     const liderR = await client.query<Usuario>(
-      `INSERT INTO usuario (nome, telefone, email, senha_hash, perfil, id_curso, semestre)
-       VALUES ($1,$2,$3,$4,'aluno',$5,$6)
+      // se foi o admin quem cadastrou, a senha do líder foi escolhida por ele → provisória
+      `INSERT INTO usuario (nome, telefone, email, senha_hash, perfil, id_curso, semestre, deve_trocar_senha)
+       VALUES ($1,$2,$3,$4,'aluno',$5,$6,$7)
        RETURNING ${USUARIO_COLUNAS_PUBLICAS}`,
-      [input.nome_lider, input.telefone, emailLider, senha_hash, input.id_curso, input.semestre]
+      [input.nome_lider, input.telefone, emailLider, senha_hash, input.id_curso, input.semestre, Boolean(opcoes.porAdmin)]
     );
     const lider = liderR.rows[0];
 
@@ -119,8 +120,9 @@ export async function registrarCadastroInicial(input: InscricaoInput) {
         const senhaProvisoria = gerarSenhaProvisoria();
         const nomeColega = colega.nome?.trim() || emailColega.split("@")[0];
         const novoColegaR = await client.query<{ id_usuario: number }>(
-          `INSERT INTO usuario (nome, telefone, email, senha_hash, perfil, id_curso)
-           VALUES ($1, NULL, $2, $3, 'aluno', $4) RETURNING id_usuario`,
+          // senha provisória → troca obrigatória no primeiro acesso
+          `INSERT INTO usuario (nome, telefone, email, senha_hash, perfil, id_curso, deve_trocar_senha)
+           VALUES ($1, NULL, $2, $3, 'aluno', $4, TRUE) RETURNING id_usuario`,
           [nomeColega, emailColega, await bcrypt.hash(senhaProvisoria, 10), colega.id_curso]
         );
         idColega = novoColegaR.rows[0].id_usuario;

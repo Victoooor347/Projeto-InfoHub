@@ -54,7 +54,45 @@ interface Opcoes {
   auth?: boolean;
 }
 
-export async function request<T>(caminho: string, opcoes: Opcoes = {}): Promise<T> {
+// ------------------------------------------------------------ refresh token
+//
+// O token de acesso dura pouco (15 min). Quando a API responde 401, pedimos
+// um novo em POST /api/auth/refresh — o refresh token viaja sozinho num
+// cookie httpOnly (o JavaScript nem consegue lê-lo) — e repetimos a chamada.
+// Para o usuário, a sessão simplesmente continua.
+
+interface RespostaRenovacao {
+  token: string;
+  usuario: unknown;
+}
+
+let renovacaoEmAndamento: Promise<RespostaRenovacao | null> | null = null;
+
+/**
+ * Pede um token de acesso novo usando o cookie de sessão. Se várias
+ * chamadas derem 401 ao mesmo tempo, todas esperam a MESMA renovação.
+ * Devolve null se não houver sessão válida (aí é preciso logar de novo).
+ */
+export function renovarSessao(): Promise<RespostaRenovacao | null> {
+  if (!renovacaoEmAndamento) {
+    renovacaoEmAndamento = (async () => {
+      try {
+        const resposta = await fetch(`${BASE_URL}/api/auth/refresh`, { method: "POST", credentials: "include" });
+        if (!resposta.ok) return null;
+        const dados = (await resposta.json()) as RespostaRenovacao;
+        setToken(dados.token);
+        return dados;
+      } catch {
+        return null;
+      } finally {
+        renovacaoEmAndamento = null;
+      }
+    })();
+  }
+  return renovacaoEmAndamento;
+}
+
+export async function request<T>(caminho: string, opcoes: Opcoes = {}, jaRenovou = false): Promise<T> {
   const { method = "GET", body, auth = true } = opcoes;
 
   const headers: Record<string, string> = {};
@@ -69,6 +107,7 @@ export async function request<T>(caminho: string, opcoes: Opcoes = {}): Promise<
       method,
       headers,
       body: body === undefined ? undefined : JSON.stringify(body),
+      credentials: "include", // manda o cookie de sessão (necessário no login/logout/refresh)
     });
   } catch {
     throw new ApiError(
@@ -92,8 +131,12 @@ export async function request<T>(caminho: string, opcoes: Opcoes = {}): Promise<
   if (!resposta.ok) {
     const corpo = (dados ?? {}) as { error?: string; detalhes?: Record<string, string> };
 
-    // token inválido/expirado: limpa e avisa o AuthContext para deslogar
-    if (resposta.status === 401 && token) {
+    // token de acesso expirado: tenta renovar UMA vez e repete a chamada
+    if (resposta.status === 401 && auth && token && !caminho.startsWith("/api/auth/")) {
+      if (!jaRenovou && (await renovarSessao())) {
+        return request<T>(caminho, opcoes, true);
+      }
+      // sem sessão válida: limpa e avisa o AuthContext para deslogar
       setToken(null);
       window.dispatchEvent(new Event(EVENTO_SESSAO_EXPIRADA));
     }
@@ -124,13 +167,18 @@ export function mensagemDeErro(erro: unknown): string {
  * token — um <a href> comum não manda o cabeçalho Authorization.
  */
 export async function baixarArquivo(caminho: string, nomeArquivo: string): Promise<void> {
-  const headers: Record<string, string> = {};
-  const token = getToken();
-  if (token) headers.Authorization = `Bearer ${token}`;
+  const buscar = () => {
+    const headers: Record<string, string> = {};
+    const token = getToken();
+    if (token) headers.Authorization = `Bearer ${token}`;
+    return fetch(`${BASE_URL}${caminho}`, { headers });
+  };
 
   let resposta: Response;
   try {
-    resposta = await fetch(`${BASE_URL}${caminho}`, { headers });
+    resposta = await buscar();
+    // token de acesso expirou: renova e tenta de novo
+    if (resposta.status === 401 && (await renovarSessao())) resposta = await buscar();
   } catch {
     throw new ApiError("Não foi possível baixar o arquivo. Verifique sua conexão.", 0);
   }

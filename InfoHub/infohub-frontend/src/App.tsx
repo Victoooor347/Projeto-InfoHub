@@ -14,6 +14,7 @@ import { AdminEquipeDetalhePage } from "./pages/admin/AdminEquipeDetalhePage";
 import { AdminTarefasPage } from "./pages/admin/AdminTarefasPage";
 import { AdminRelatoriosPage } from "./pages/admin/AdminRelatoriosPage";
 import { AdminUsuariosPage } from "./pages/admin/AdminUsuariosPage";
+import { TrocarSenhaPage } from "./pages/TrocarSenhaPage";
 import { AlunoDashboardPage } from "./pages/aluno/AlunoDashboardPage";
 import { AlunoTarefasPage } from "./pages/aluno/AlunoTarefasPage";
 import { AlunoTarefaDetalhePage } from "./pages/aluno/AlunoTarefaDetalhePage";
@@ -27,6 +28,14 @@ export default function App() {
             <Route path="/" element={<Navigate to="/login" replace />} />
             <Route path="/login" element={<LoginPage />} />
             <Route path="/inscricao" element={<InscricaoPage />} />
+            <Route
+              path="/trocar-senha"
+              element={
+                <ProtectedRoute perfis={["admin", "mentor", "aluno"]}>
+                  <TrocarSenhaPage />
+                </ProtectedRoute>
+              }
+            />
 
             <Route
               path="/admin"

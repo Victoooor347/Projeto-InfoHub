@@ -107,7 +107,7 @@ export function AdminUsuariosPage() {
             <input
               className={campo}
               type="password"
-              placeholder="Senha inicial (mín. 6 caracteres)"
+              placeholder="Senha provisória (a pessoa troca no 1º acesso)"
               minLength={6}
               value={senha}
               onChange={(e) => setSenha(e.target.value)}

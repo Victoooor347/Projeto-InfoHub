@@ -1,6 +1,6 @@
 import { createContext, useCallback, useContext, useEffect, useState, type ReactNode } from "react";
 import * as apiInfoHub from "../services/api";
-import { EVENTO_SESSAO_EXPIRADA, getToken, mensagemDeErro, setToken } from "../services/http";
+import { EVENTO_SESSAO_EXPIRADA, getToken, mensagemDeErro, renovarSessao, setToken } from "../services/http";
 import type { Usuario } from "../types";
 
 interface ResultadoLogin {
@@ -25,18 +25,23 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [usuarioAtual, setUsuarioAtual] = useState<Usuario | null>(null);
   const [restaurandoSessao, setRestaurandoSessao] = useState(true);
 
-  // Ao abrir o app (ou dar F5), se houver token salvo, revalida com GET /auth/me.
+  // Ao abrir o app (ou dar F5):
+  //  - com token salvo → revalida com GET /auth/me (se o token de acesso já
+  //    expirou, o http.ts renova sozinho pelo cookie de sessão);
+  //  - sem token salvo → tenta renovar direto pelo cookie (ex.: aba fechada
+  //    e aberta de novo dentro dos 7 dias da sessão).
   // O backend recarrega o usuário do banco a cada request, então uma conta
-  // desativada perde o acesso na hora, sem esperar o token expirar.
+  // desativada perde o acesso na hora.
   useEffect(() => {
     let cancelado = false;
 
     async function restaurar() {
-      if (!getToken()) {
-        setRestaurandoSessao(false);
-        return;
-      }
       try {
+        if (!getToken()) {
+          const renovada = await renovarSessao();
+          if (!cancelado) setUsuarioAtual(renovada ? (renovada.usuario as Usuario) : null);
+          return;
+        }
         const usuario = await apiInfoHub.auth.me();
         if (!cancelado) setUsuarioAtual(usuario);
       } catch {
@@ -79,6 +84,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const sair = useCallback(() => {
+    // revoga a sessão no servidor (e apaga o cookie); se falhar, sai mesmo assim
+    apiInfoHub.auth.logout().catch(() => {});
     setToken(null);
     setUsuarioAtual(null);
   }, []);

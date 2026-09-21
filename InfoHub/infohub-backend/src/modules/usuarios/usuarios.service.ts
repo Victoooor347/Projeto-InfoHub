@@ -38,8 +38,9 @@ export async function criarUsuarioAdminOuMentor(input: CriarUsuarioInput): Promi
 
   const senha_hash = await bcrypt.hash(input.senha, 10);
   const r = await query<Usuario>(
-    `INSERT INTO usuario (nome, telefone, email, senha_hash, perfil)
-     VALUES ($1, $2, $3, $4, $5)
+    // senha definida pelo admin → a pessoa troca no primeiro acesso
+    `INSERT INTO usuario (nome, telefone, email, senha_hash, perfil, deve_trocar_senha)
+     VALUES ($1, $2, $3, $4, $5, TRUE)
      RETURNING ${USUARIO_COLUNAS_PUBLICAS}`,
     [input.nome, input.telefone ?? null, email, senha_hash, input.perfil]
   );

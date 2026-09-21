@@ -37,7 +37,8 @@ export interface ColegaCriado {
 }
 
 export interface RespostaInscricao {
-  token: string;
+  /** null quando quem cadastrou foi o admin (ele continua logado como admin). */
+  token: string | null;
   usuario: Usuario;
   equipe: Equipe;
   colegas_criados: ColegaCriado[];
@@ -85,6 +86,11 @@ export const auth = {
     }),
   /** Restaura a sessão a partir do token salvo (usado no F5). */
   me: () => api.get<Usuario>("/api/auth/me"),
+  /** Encerra a sessão deste navegador (revoga o refresh token no servidor). */
+  logout: () => request<void>("/api/auth/logout", { method: "POST", auth: false }),
+  /** O próprio usuário troca a senha; devolve token novo (as outras sessões caem). */
+  trocarSenha: (senha_atual: string, nova_senha: string) =>
+    api.patch<RespostaLogin>("/api/auth/senha", { senha_atual, nova_senha }),
 };
 
 export const inscricao = {
