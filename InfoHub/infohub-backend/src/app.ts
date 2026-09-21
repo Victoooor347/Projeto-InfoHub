@@ -17,11 +17,13 @@ import { entregaveisRouter } from "./modules/entregaveis/entregaveis.routes";
 import { anotacoesRouter } from "./modules/anotacoes/anotacoes.routes";
 import { lembretesRouter } from "./modules/lembretes/lembretes.routes";
 import { inscricaoRouter } from "./modules/inscricao/inscricao.routes";
+import { arquivosRouter } from "./modules/arquivos/arquivos.routes";
 
 export const app = express();
 
 app.use(cors({ origin: env.CORS_ORIGIN }));
-app.use(express.json());
+// 10 MB: comporta um arquivo de até 5 MB em base64 (≈ +33%) no envio de entregáveis
+app.use(express.json({ limit: "10mb" }));
 
 app.get("/health", (_req, res) => {
   res.json({ status: "ok", timestamp: new Date().toISOString() });
@@ -44,6 +46,7 @@ app.use("/api/entregaveis", entregaveisRouter);
 app.use("/api/anotacoes", anotacoesRouter);
 app.use("/api/lembretes", lembretesRouter);
 app.use("/api/inscricao", inscricaoRouter);
+app.use("/api/arquivos", arquivosRouter);
 
 // ---------- frontend (React já compilado) ----------
 // Deploy único: o build do Vite (infohub-frontend/dist) é servido por este

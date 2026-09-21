@@ -46,7 +46,7 @@ async function seed() {
     // ---------- limpa o cenário anterior ----------
     // Nomes sem prefixo → resolvem só no schema da dupla (search_path, ver config/db.ts).
     await client.query(`
-      TRUNCATE lembrete, anotacoes, entregavel, tarefa, equipe_mentor, equipe_usuario, etapa, equipe, usuario
+      TRUNCATE lembrete, anotacoes, entregavel, arquivo, tarefa, equipe_mentor, equipe_usuario, etapa, equipe, usuario
       RESTART IDENTITY CASCADE
     `);
 

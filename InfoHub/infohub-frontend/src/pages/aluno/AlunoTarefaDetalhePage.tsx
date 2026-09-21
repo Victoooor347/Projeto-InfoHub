@@ -1,6 +1,7 @@
 import { useRef, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
-import { ArrowLeft, CheckCircle2, FileText, Link2, Lock, Upload } from "lucide-react";
+import { ArrowLeft, CheckCircle2, Link2, Lock, Upload } from "lucide-react";
+import { EntregavelLink } from "../../components/EntregavelLink";
 import { useAuth } from "../../store/AuthContext";
 import { useData } from "../../store/DataContext";
 import { Card, EmptyState, PrimaryButton } from "../../components/Kit";
@@ -14,17 +15,31 @@ import {
   isPrazoVencido,
 } from "../../utils/selectors";
 
+const TAMANHO_MAXIMO = 5 * 1024 * 1024; // mesmo limite do backend
+const EXTENSOES_ACEITAS =
+  ".pdf,.doc,.docx,.ppt,.pptx,.xls,.xlsx,.odt,.odp,.ods,.txt,.csv,.png,.jpg,.jpeg,.gif,.webp,.zip";
+
 export function AlunoTarefaDetalhePage() {
   const { id } = useParams();
   const idTarefa = Number(id);
   const navigate = useNavigate();
   const { usuarioAtual } = useAuth();
-  const { tarefas, statusTarefa, equipes, etapas, entregaveis, enviarEntregavel, usuarios, equipeUsuarios } =
-    useData();
+  const {
+    tarefas,
+    statusTarefa,
+    equipes,
+    etapas,
+    entregaveis,
+    enviarEntregavel,
+    enviarArquivoEntregavel,
+    usuarios,
+    equipeUsuarios,
+  } = useData();
 
   const tarefa = tarefas.find((t) => t.id_tarefa === idTarefa);
   const [linkExterno, setLinkExterno] = useState("");
   const [enviando, setEnviando] = useState(false);
+  const [avisoArquivo, setAvisoArquivo] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   if (!tarefa) {
@@ -52,14 +67,20 @@ export function AlunoTarefaDetalhePage() {
   const podeEnviar = papel === "lider";
   const lider = equipe ? getLiderEquipe(equipeUsuarios, usuarios, equipe.id_equipe) : undefined;
 
-  // Nesta v1 o backend guarda só a referência do arquivo (nome ou link) — não
-  // há upload binário ainda, então mandamos o nome do arquivo escolhido.
+  // Upload de verdade: o conteúdo do arquivo vai para o banco (até 5 MB).
   async function handleUploadArquivo(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
     if (!file || !usuarioAtual) return;
+    setAvisoArquivo(null);
+    if (file.size > TAMANHO_MAXIMO) {
+      setAvisoArquivo(`"${file.name}" tem ${(file.size / (1024 * 1024)).toFixed(1)} MB — o limite é 5 MB.`);
+      if (fileInputRef.current) fileInputRef.current.value = "";
+      return;
+    }
     setEnviando(true);
-    await enviarEntregavel(idTarefa, usuarioAtual.id_usuario, file.name, file.type || "arquivo");
+    const ok = await enviarArquivoEntregavel(idTarefa, file);
     setEnviando(false);
+    if (ok) setAvisoArquivo(`"${file.name}" enviado com sucesso.`);
     if (fileInputRef.current) fileInputRef.current.value = "";
   }
 
@@ -102,8 +123,15 @@ export function AlunoTarefaDetalhePage() {
             <div className="grid sm:grid-cols-2 gap-3">
               <label className="flex flex-col items-center justify-center gap-2 rounded-xl border-2 border-dashed border-paper-line px-4 py-6 text-center cursor-pointer hover:border-accent-orange/50 hover:bg-paper-alt/40 transition">
                 <Upload size={20} className="text-text-faint" />
-                <span className="text-xs text-text-soft">Anexar arquivo (PDF, imagem, vídeo)</span>
-                <input ref={fileInputRef} type="file" className="hidden" onChange={handleUploadArquivo} />
+                <span className="text-xs text-text-soft">Anexar arquivo (PDF, Office, imagem ou ZIP · até 5 MB)</span>
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept={EXTENSOES_ACEITAS}
+                  className="hidden"
+                  disabled={enviando}
+                  onChange={handleUploadArquivo}
+                />
               </label>
               <form onSubmit={handleEnviarLink} className="flex flex-col justify-center gap-2 rounded-xl border border-paper-line px-4 py-4">
                 <span className="text-xs text-text-soft flex items-center gap-1.5">
@@ -123,6 +151,10 @@ export function AlunoTarefaDetalhePage() {
               </form>
             </div>
             {enviando && <p className="text-xs text-text-faint">Enviando…</p>}
+            {!enviando && avisoArquivo && <p className="text-xs text-text-soft">{avisoArquivo}</p>}
+            <p className="text-[11px] text-text-faint">
+              Vídeos (como o pitch) devem ser enviados como link do YouTube.
+            </p>
           </div>
         ) : (
           <div className="mt-6 pt-5 border-t border-paper-line">
@@ -150,8 +182,7 @@ export function AlunoTarefaDetalhePage() {
             const autor = usuarios.find((u) => u.id_usuario === h.id_usuario);
             return (
               <div key={h.id_entregavel} className="flex items-center gap-2.5 text-sm">
-                <FileText size={15} className="text-text-faint shrink-0" />
-                <span className="font-mono text-xs truncate flex-1">{h.arquivo_url.split("/").pop()}</span>
+                <EntregavelLink entregavel={h} className="flex-1" />
                 <span className="text-xs text-text-faint shrink-0">
                   {autor?.nome.split(" ")[0]} · {formatarDataHora(h.data_envio)}
                 </span>

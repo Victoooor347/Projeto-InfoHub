@@ -85,6 +85,28 @@ npm run db:setup     # cria schema e tabelas (idempotente) + recria o cenário d
 
 **Nunca** rode `db:reset` / `db:fresh` no servidor.
 
+## Lembretes por e-mail e upload de arquivos
+
+**Upload:** o líder anexa arquivos de até 5 MB (PDF, Office, imagens, ZIP) na tarefa. O
+conteúdo fica no banco (tabela `arquivo`), porque o container do Coolify é recriado a cada
+deploy. O download respeita as mesmas permissões das equipes. Vídeos continuam por link.
+
+**Lembretes:** toda tarefa nova ganha um lembrete agendado para `LEMBRETE_DIAS_ANTES` dia(s)
+antes do prazo; o servidor confere de hora em hora e envia o e-mail para todos os integrantes.
+O botão "lembrete" do admin/mentor envia na hora. Variáveis (todas opcionais):
+
+| Variável | Exemplo |
+|---|---|
+| `SMTP_HOST` / `SMTP_PORT` | `smtp.gmail.com` / `587` |
+| `SMTP_USER` / `SMTP_PASS` | seu e-mail / senha de app do Google |
+| `EMAIL_FROM` | `InfoHub <seuemail@gmail.com>` |
+| `EMAIL_TESTE_PARA` | redireciona **todos** os e-mails para esse endereço (demo) |
+| `APP_URL` | endereço público do sistema (link no e-mail) |
+| `LEMBRETE_DIAS_ANTES` | `1` |
+
+Sem SMTP configurado, o sistema funciona em **modo simulação**: o lembrete é registrado e o
+e-mail só aparece no log do container.
+
 ## O que já funciona hoje
 
 - Login de verdade (JWT), com sessão restaurada ao recarregar a página

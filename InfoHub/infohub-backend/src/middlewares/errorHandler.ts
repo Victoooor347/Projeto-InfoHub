@@ -10,6 +10,11 @@ export function errorHandler(err: unknown, _req: Request, res: Response, _next: 
     });
   }
 
+  // corpo acima do limite do express.json() (ex.: arquivo grande demais)
+  if ((err as { type?: string })?.type === "entity.too.large") {
+    return res.status(413).json({ error: "O arquivo passa do limite de 5 MB" });
+  }
+
   if (err instanceof AppError) {
     return res.status(err.statusCode).json({ error: err.message });
   }

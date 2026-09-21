@@ -25,13 +25,17 @@ entregaveisRouter.get(
     // id_equipe vem da tarefa só para o filtro do mentor; não vai na resposta
     const r = id_tarefa
       ? await query<{ id_equipe: number }>(
-          `SELECT e.*, t.id_equipe FROM entregavel e JOIN tarefa t ON t.id_tarefa = e.id_tarefa
-           WHERE e.id_tarefa = $1 ORDER BY e.data_envio DESC`,
+          `SELECT e.*, t.id_equipe, a.nome_original AS arquivo_nome, a.tamanho AS arquivo_tamanho
+             FROM entregavel e JOIN tarefa t ON t.id_tarefa = e.id_tarefa
+             LEFT JOIN arquivo a ON a.id_arquivo = e.id_arquivo
+            WHERE e.id_tarefa = $1 ORDER BY e.data_envio DESC`,
           [id_tarefa]
         )
       : await query<{ id_equipe: number }>(
-          `SELECT e.*, t.id_equipe FROM entregavel e JOIN tarefa t ON t.id_tarefa = e.id_tarefa
-           ORDER BY e.data_envio DESC`
+          `SELECT e.*, t.id_equipe, a.nome_original AS arquivo_nome, a.tamanho AS arquivo_tamanho
+             FROM entregavel e JOIN tarefa t ON t.id_tarefa = e.id_tarefa
+             LEFT JOIN arquivo a ON a.id_arquivo = e.id_arquivo
+            ORDER BY e.data_envio DESC`
         );
     const visiveis = await filtrarPorEquipesVisiveis(req.usuario!, r.rows);
     res.json(visiveis.map(({ id_equipe: _ignorado, ...entregavel }) => entregavel));

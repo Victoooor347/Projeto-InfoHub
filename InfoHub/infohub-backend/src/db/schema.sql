@@ -227,6 +227,25 @@ CREATE TABLE IF NOT EXISTS entregavel (
 );
 CREATE INDEX IF NOT EXISTS idx_entregavel_tarefa ON entregavel (id_tarefa);
 
+-- ---------- arquivo (upload de entregáveis) ----------
+-- O conteúdo fica NO BANCO (BYTEA), e não no disco do container: o Coolify
+-- recria o container a cada deploy e apagaria qualquer arquivo salvo em disco.
+-- id_equipe permite checar a permissão de download sem precisar de joins.
+CREATE TABLE IF NOT EXISTS arquivo (
+  id_arquivo SERIAL PRIMARY KEY,
+  nome_original VARCHAR(255) NOT NULL,
+  tipo_mime VARCHAR(100) NOT NULL,
+  tamanho INT NOT NULL CHECK (tamanho > 0),
+  conteudo BYTEA NOT NULL,
+  id_equipe INT NOT NULL REFERENCES equipe (id_equipe) ON DELETE CASCADE,
+  id_usuario INT NOT NULL REFERENCES usuario (id_usuario),
+  criado_em TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_arquivo_equipe ON arquivo (id_equipe);
+
+-- entregável de arquivo aponta para a linha em `arquivo`; entregável de link fica NULL
+ALTER TABLE entregavel ADD COLUMN IF NOT EXISTS id_arquivo INT REFERENCES arquivo (id_arquivo) ON DELETE SET NULL;
+
 -- ---------- anotacoes ----------
 -- mesma lógica de FK composta que tarefa, pelo mesmo motivo.
 CREATE TABLE IF NOT EXISTS anotacoes (
@@ -248,6 +267,11 @@ CREATE TABLE IF NOT EXISTS lembrete (
   id_tarefa INT NOT NULL REFERENCES tarefa (id_tarefa) ON DELETE CASCADE
 );
 CREATE INDEX IF NOT EXISTS idx_lembrete_tarefa ON lembrete (id_tarefa);
+-- quando o e-mail saiu de fato, para quantas pessoas, e em que modo
+-- ('enviado' = SMTP real, 'teste' = redirecionado, 'simulado' = sem SMTP configurado)
+ALTER TABLE lembrete ADD COLUMN IF NOT EXISTS enviado_em TIMESTAMPTZ;
+ALTER TABLE lembrete ADD COLUMN IF NOT EXISTS destinatarios INT;
+ALTER TABLE lembrete ADD COLUMN IF NOT EXISTS modo_envio VARCHAR(20);
 
 -- ---------- equipe_mentor (extensão N:N) ----------
 CREATE TABLE IF NOT EXISTS equipe_mentor (

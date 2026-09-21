@@ -169,8 +169,13 @@ export const tarefas = {
     api.patch<Tarefa>(`/api/tarefas/${id}/status`, { id_status }),
   atualizarPrazo: (id: number, data_limite: string) =>
     api.patch<Tarefa>(`/api/tarefas/${id}/prazo`, { data_limite }),
-  enviarEntregavel: (id: number, arquivo_url: string, tipo?: string) =>
-    api.post<Entregavel>(`/api/tarefas/${id}/entregaveis`, { arquivo_url, tipo }),
+  /** Entrega por link OU por arquivo (conteúdo em base64). */
+  enviarEntregavel: (
+    id: number,
+    entrega:
+      | { arquivo_url: string; tipo?: string }
+      | { arquivo: { nome: string; tipo_mime: string; conteudo_base64: string } }
+  ) => api.post<Entregavel>(`/api/tarefas/${id}/entregaveis`, entrega),
   listarEntregaveis: (id: number) => api.get<Entregavel[]>(`/api/tarefas/${id}/entregaveis`),
 };
 

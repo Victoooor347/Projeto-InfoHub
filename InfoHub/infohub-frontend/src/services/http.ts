@@ -119,6 +119,49 @@ export function mensagemDeErro(erro: unknown): string {
   return "Erro inesperado.";
 }
 
+/**
+ * Baixa um arquivo protegido da API (ex.: "/api/arquivos/12") mandando o
+ * token — um <a href> comum não manda o cabeçalho Authorization.
+ */
+export async function baixarArquivo(caminho: string, nomeArquivo: string): Promise<void> {
+  const headers: Record<string, string> = {};
+  const token = getToken();
+  if (token) headers.Authorization = `Bearer ${token}`;
+
+  let resposta: Response;
+  try {
+    resposta = await fetch(`${BASE_URL}${caminho}`, { headers });
+  } catch {
+    throw new ApiError("Não foi possível baixar o arquivo. Verifique sua conexão.", 0);
+  }
+  if (!resposta.ok) {
+    const corpo = (await resposta.json().catch(() => ({}))) as { error?: string };
+    throw new ApiError(corpo.error ?? `Falha ao baixar o arquivo (${resposta.status})`, resposta.status);
+  }
+
+  const url = URL.createObjectURL(await resposta.blob());
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = nomeArquivo;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 10_000);
+}
+
+/** Lê um arquivo escolhido no <input type="file"> como base64 (sem o prefixo "data:..."). */
+export function lerArquivoComoBase64(arquivo: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const leitor = new FileReader();
+    leitor.onload = () => {
+      const resultado = String(leitor.result ?? "");
+      resolve(resultado.slice(resultado.indexOf(",") + 1));
+    };
+    leitor.onerror = () => reject(new Error("Não foi possível ler o arquivo"));
+    leitor.readAsDataURL(arquivo);
+  });
+}
+
 export const api = {
   get: <T>(caminho: string) => request<T>(caminho),
   post: <T>(caminho: string, body?: unknown, opcoes?: Omit<Opcoes, "method" | "body">) =>

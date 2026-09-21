@@ -115,11 +115,16 @@ export interface Tarefa {
 
 export interface Entregavel {
   id_entregavel: number;
+  /** Link externo (https://...) ou, para arquivo enviado, "/api/arquivos/<id>". */
   arquivo_url: string;
   tipo: string | null;
   data_envio: string; // ISO datetime
   id_tarefa: number;
   id_usuario: number;
+  /** Preenchidos só quando a entrega é um arquivo (upload). */
+  id_arquivo?: number | null;
+  arquivo_nome?: string | null;
+  arquivo_tamanho?: number | null;
 }
 
 export interface Anotacao {
@@ -136,6 +141,10 @@ export interface Lembrete {
   data_programada: string; // ISO date
   enviado: boolean;
   id_tarefa: number;
+  enviado_em?: string | null;
+  destinatarios?: number | null;
+  /** "enviado" (e-mail real), "teste" (redirecionado) ou "simulado" (sem SMTP). */
+  modo_envio?: "enviado" | "teste" | "simulado" | null;
 }
 
 /**

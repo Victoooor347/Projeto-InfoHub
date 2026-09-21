@@ -1,4 +1,5 @@
-import { query } from "../../config/db";
+import { pool, query } from "../../config/db";
+import { agendarLembreteAutomatico } from "../lembretes/lembretes.service";
 import { AppError } from "../../utils/AppError";
 import { validarEtapaPertenceEquipe } from "../equipes/equipes.service";
 import type { CriarTarefaInput } from "./tarefas.schemas";
@@ -53,6 +54,8 @@ export async function criarTarefa(input: CriarTarefaInput): Promise<Tarefa> {
      VALUES ($1,$2,$3,$4,$5,$6) RETURNING *`,
     [input.titulo, input.descricao, input.data_limite, input.id_equipe, input.id_etapa, idPendente]
   );
+  // lembrete automático por e-mail, N dias antes do prazo
+  await agendarLembreteAutomatico(r.rows[0].id_tarefa);
   return r.rows[0];
 }
 
@@ -78,6 +81,8 @@ export async function atualizarPrazo(id: number, data_limite: string): Promise<T
     data_limite,
     id,
   ]);
+  // prazo mudou → o lembrete automático pendente acompanha a nova data
+  await agendarLembreteAutomatico(id);
   return r.rows[0];
 }
 
@@ -87,33 +92,109 @@ export async function atualizarPrazo(id: number, data_limite: string): Promise<T
  * o histórico de versões (cada envio novo é uma linha nova em entregavel,
  * nada é sobrescrito).
  */
+/** Arquivo enviado pelo navegador, em base64 (ver enviarEntregavelSchema). */
+export interface ArquivoEnviado {
+  nome: string;
+  tipo_mime: string;
+  conteudo_base64: string;
+}
+
+export const TAMANHO_MAXIMO_ARQUIVO = 5 * 1024 * 1024; // 5 MB
+
+const EXTENSOES_PERMITIDAS = [
+  "pdf", "doc", "docx", "ppt", "pptx", "xls", "xlsx", "odt", "odp", "ods",
+  "txt", "csv", "png", "jpg", "jpeg", "gif", "webp", "zip",
+];
+
+function extensao(nome: string): string {
+  const partes = nome.toLowerCase().split(".");
+  return partes.length > 1 ? partes.pop()! : "";
+}
+
 export async function enviarEntregavel(
   id_tarefa: number,
   id_usuario: number,
-  arquivo_url: string,
-  tipo?: string
+  entrega: { arquivo_url?: string; tipo?: string; arquivo?: ArquivoEnviado }
 ) {
-  await buscarTarefaPorId(id_tarefa);
+  const tarefa = await buscarTarefaPorId(id_tarefa);
   const idEntregue = await idDoStatus("Entregue");
 
-  const r = await query(
-    `INSERT INTO entregavel (arquivo_url, tipo, id_tarefa, id_usuario)
-     VALUES ($1,$2,$3,$4) RETURNING *`,
-    [arquivo_url, tipo ?? null, id_tarefa, id_usuario]
-  );
-  await query(`UPDATE tarefa SET id_status = $1 WHERE id_tarefa = $2`, [idEntregue, id_tarefa]);
+  // valida o arquivo ANTES de abrir a transação
+  let conteudo: Buffer | null = null;
+  if (entrega.arquivo) {
+    const ext = extensao(entrega.arquivo.nome);
+    if (!EXTENSOES_PERMITIDAS.includes(ext)) {
+      throw AppError.badRequest(
+        `Tipo de arquivo não permitido (.${ext || "sem extensão"}). Use: ${EXTENSOES_PERMITIDAS.join(", ")}`
+      );
+    }
+    conteudo = Buffer.from(entrega.arquivo.conteudo_base64, "base64");
+    if (conteudo.length === 0) throw AppError.badRequest("O arquivo está vazio");
+    if (conteudo.length > TAMANHO_MAXIMO_ARQUIVO) {
+      throw AppError.badRequest("O arquivo passa do limite de 5 MB");
+    }
+  }
+
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+
+    let id_arquivo: number | null = null;
+    let arquivo_url = entrega.arquivo_url ?? "";
+    let tipo = entrega.tipo ?? null;
+
+    if (entrega.arquivo && conteudo) {
+      const a = await client.query<{ id_arquivo: number }>(
+        `INSERT INTO arquivo (nome_original, tipo_mime, tamanho, conteudo, id_equipe, id_usuario)
+         VALUES ($1,$2,$3,$4,$5,$6) RETURNING id_arquivo`,
+        [
+          entrega.arquivo.nome.slice(0, 255),
+          (entrega.arquivo.tipo_mime || "application/octet-stream").slice(0, 100),
+          conteudo.length,
+          conteudo,
+          tarefa.id_equipe,
+          id_usuario,
+        ]
+      );
+      id_arquivo = a.rows[0].id_arquivo;
+      arquivo_url = `/api/arquivos/${id_arquivo}`;
+      tipo = extensao(entrega.arquivo.nome);
+    }
+
+    const r = await client.query<{ id_entregavel: number }>(
+      `INSERT INTO entregavel (arquivo_url, tipo, id_tarefa, id_usuario, id_arquivo)
+       VALUES ($1,$2,$3,$4,$5) RETURNING id_entregavel`,
+      [arquivo_url, tipo, id_tarefa, id_usuario, id_arquivo]
+    );
+    await client.query(`UPDATE tarefa SET id_status = $1 WHERE id_tarefa = $2`, [idEntregue, id_tarefa]);
+    await client.query("COMMIT");
+
+    return buscarEntregavel(r.rows[0].id_entregavel);
+  } catch (err) {
+    await client.query("ROLLBACK").catch(() => {});
+    throw err;
+  } finally {
+    client.release();
+  }
+}
+
+/** Colunas do entregável + nome/tamanho do arquivo (nunca o conteúdo). */
+const ENTREGAVEL_SELECT = `
+  SELECT e.*, a.nome_original AS arquivo_nome, a.tamanho AS arquivo_tamanho
+    FROM entregavel e
+    LEFT JOIN arquivo a ON a.id_arquivo = e.id_arquivo`;
+
+async function buscarEntregavel(id_entregavel: number) {
+  const r = await query(`${ENTREGAVEL_SELECT} WHERE e.id_entregavel = $1`, [id_entregavel]);
   return r.rows[0];
 }
 
 export async function listarEntregaveis(id_tarefa?: number) {
   if (id_tarefa) {
-    const r = await query(
-      `SELECT * FROM entregavel WHERE id_tarefa = $1 ORDER BY data_envio DESC`,
-      [id_tarefa]
-    );
+    const r = await query(`${ENTREGAVEL_SELECT} WHERE e.id_tarefa = $1 ORDER BY e.data_envio DESC`, [id_tarefa]);
     return r.rows;
   }
-  const r = await query(`SELECT * FROM entregavel ORDER BY data_envio DESC`);
+  const r = await query(`${ENTREGAVEL_SELECT} ORDER BY e.data_envio DESC`);
   return r.rows;
 }
 

@@ -1,6 +1,6 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
 import * as apiInfoHub from "../services/api";
-import { mensagemDeErro } from "../services/http";
+import { lerArquivoComoBase64, mensagemDeErro } from "../services/http";
 import { useAuth } from "./AuthContext";
 import type {
   Anotacao,
@@ -73,9 +73,13 @@ interface DataContextValue {
   }) => Promise<void>;
   atualizarStatusTarefa: (idTarefa: number, idStatus: number) => Promise<void>;
   atualizarPrazoTarefa: (idTarefa: number, novaData: string) => Promise<void>;
-  enviarEntregavel: (idTarefa: number, idUsuario: number, arquivoNome: string, tipo: string) => Promise<void>;
+  /** Entrega por link (ex.: YouTube). */
+  enviarEntregavel: (idTarefa: number, idUsuario: number, link: string, tipo: string) => Promise<void>;
+  /** Entrega por arquivo (upload de verdade). Retorna true se deu certo. */
+  enviarArquivoEntregavel: (idTarefa: number, arquivo: File) => Promise<boolean>;
   adicionarAnotacao: (a: Omit<Anotacao, "id_anotacao" | "data_registro">) => Promise<void>;
-  dispararLembreteManual: (idTarefa: number) => Promise<void>;
+  /** Envia o e-mail de lembrete agora; retorna o lembrete criado (ou null se falhou). */
+  dispararLembreteManual: (idTarefa: number) => Promise<Lembrete | null>;
   marcarProntoParaInovAMF: (idEquipe: number, pronto: boolean) => Promise<void>;
   registrarCadastroInicial: (
     input: NovoCadastroInput
@@ -341,12 +345,31 @@ export function DataProvider({ children }: { children: ReactNode }) {
     (idTarefa: number, _idUsuario: number, arquivoNome: string, tipo: string) =>
       executar(async () => {
         // o autor do envio vem do token no backend — o id passado pela tela é ignorado
-        const novo = await apiInfoHub.tarefas.enviarEntregavel(idTarefa, arquivoNome, tipo);
+        const novo = await apiInfoHub.tarefas.enviarEntregavel(idTarefa, { arquivo_url: arquivoNome, tipo });
         setEntregaveis((prev) => [...prev, novo]);
         // o envio já muda o status da tarefa para "Entregue" no servidor
         substituirTarefa(await apiInfoHub.tarefas.buscarPorId(idTarefa));
       }),
     [executar, substituirTarefa]
+  );
+
+  const enviarArquivoEntregavel = useCallback(
+    async (idTarefa: number, arquivo: File) => {
+      setErroAcao(null);
+      try {
+        const conteudo_base64 = await lerArquivoComoBase64(arquivo);
+        const novo = await apiInfoHub.tarefas.enviarEntregavel(idTarefa, {
+          arquivo: { nome: arquivo.name, tipo_mime: arquivo.type || "application/octet-stream", conteudo_base64 },
+        });
+        setEntregaveis((prev) => [...prev, novo]);
+        substituirTarefa(await apiInfoHub.tarefas.buscarPorId(idTarefa));
+        return true;
+      } catch (erro) {
+        setErroAcao(mensagemDeErro(erro));
+        return false;
+      }
+    },
+    [substituirTarefa]
   );
 
   const adicionarAnotacao = useCallback(
@@ -362,14 +385,17 @@ export function DataProvider({ children }: { children: ReactNode }) {
     [executar]
   );
 
-  const dispararLembreteManual = useCallback(
-    (idTarefa: number) =>
-      executar(async () => {
-        const novo = await apiInfoHub.lembretes.criar(idTarefa);
-        setLembretes((prev) => [...prev, novo]);
-      }),
-    [executar]
-  );
+  const dispararLembreteManual = useCallback(async (idTarefa: number) => {
+    setErroAcao(null);
+    try {
+      const novo = await apiInfoHub.lembretes.criar(idTarefa);
+      setLembretes((prev) => [...prev, novo]);
+      return novo;
+    } catch (erro) {
+      setErroAcao(mensagemDeErro(erro));
+      return null;
+    }
+  }, []);
 
   const criarUsuarioAdminOuMentor = useCallback(
     (u: { nome: string; email: string; telefone?: string | null; senha: string; perfil: "admin" | "mentor" }) =>
@@ -470,6 +496,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
       atualizarStatusTarefa,
       atualizarPrazoTarefa,
       enviarEntregavel,
+      enviarArquivoEntregavel,
       adicionarAnotacao,
       dispararLembreteManual,
       marcarProntoParaInovAMF,
@@ -502,6 +529,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
       atualizarStatusTarefa,
       atualizarPrazoTarefa,
       enviarEntregavel,
+      enviarArquivoEntregavel,
       adicionarAnotacao,
       dispararLembreteManual,
       marcarProntoParaInovAMF,

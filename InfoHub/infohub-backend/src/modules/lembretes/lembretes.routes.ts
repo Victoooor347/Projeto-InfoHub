@@ -4,6 +4,7 @@ import { z } from "zod";
 import { authenticate, requireRole } from "../../middlewares/auth";
 import { validate } from "../../middlewares/validate";
 import { query } from "../../config/db";
+import { dispararLembreteManual } from "./lembretes.service";
 import { AppError } from "../../utils/AppError";
 import { filtrarPorEquipesVisiveis, garantirAcessoEquipe } from "../../utils/acessoEquipe";
 
@@ -47,10 +48,8 @@ lembretesRouter.get(
   }
 );
 
-// RF-20: administrador/mentor dispara um lembrete manual avulso para uma
-// equipe/tarefa específica. Nesta v1 (só API) isso apenas registra o
-// lembrete como "enviado"; o disparo real de e-mail fica para quando o
-// serviço de e-mail (Resend + Gmail, ver Q7) for integrado.
+// RF-20: administrador/mentor dispara um lembrete manual para a equipe de
+// uma tarefa: o e-mail sai na hora (ver lembretes.service.ts e services/email.ts).
 lembretesRouter.post(
   "/",
   authenticate,
@@ -59,10 +58,7 @@ lembretesRouter.post(
   async (req: Request, res: Response) => {
     const { id_tarefa } = req.body as { id_tarefa: number };
     await garantirAcessoEquipe(req.usuario!, await equipeDaTarefa(id_tarefa));
-    const r = await query(
-      `INSERT INTO lembrete (data_programada, enviado, id_tarefa) VALUES (CURRENT_DATE, TRUE, $1) RETURNING *`,
-      [id_tarefa]
-    );
-    res.status(201).json(r.rows[0]);
+    // envia o e-mail para a equipe agora e registra o lembrete como enviado
+    res.status(201).json(await dispararLembreteManual(id_tarefa));
   }
 );

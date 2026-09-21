@@ -2,6 +2,7 @@ import type { Request, Response } from "express";
 import { AppError } from "../../utils/AppError";
 import { equipesVisiveis, garantirAcessoEquipe } from "../../utils/acessoEquipe";
 import { papelDoUsuarioNaEquipe } from "../equipeUsuarios/equipeUsuarios.service";
+import type { EnviarEntregavelInput } from "./tarefas.schemas";
 import * as service from "./tarefas.service";
 
 /*
@@ -70,7 +71,7 @@ export async function atualizarPrazo(req: Request, res: Response) {
  */
 export async function enviarEntregavel(req: Request, res: Response) {
   const { id } = req.params as unknown as { id: number };
-  const { arquivo_url, tipo } = req.body as { arquivo_url: string; tipo?: string };
+  const entrega = req.body as EnviarEntregavelInput;
   const usuario = req.usuario!;
 
   if (usuario.perfil !== "aluno") {
@@ -83,7 +84,7 @@ export async function enviarEntregavel(req: Request, res: Response) {
     throw AppError.forbidden("Só o líder da equipe pode enviar entregáveis desta tarefa");
   }
 
-  const entregavel = await service.enviarEntregavel(id, usuario.id_usuario, arquivo_url, tipo);
+  const entregavel = await service.enviarEntregavel(id, usuario.id_usuario, entrega);
   res.status(201).json(entregavel);
 }
 

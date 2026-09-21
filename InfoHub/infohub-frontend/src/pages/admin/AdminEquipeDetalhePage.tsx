@@ -4,7 +4,6 @@ import {
   ArrowLeft,
   ChevronLeft,
   ChevronRight,
-  FileText,
   Link2,
   Lock,
   Mail,
@@ -21,6 +20,7 @@ import { useAuth } from "../../store/AuthContext";
 import { Card, PrimaryButton, SecondaryButton, Pill, EmptyState } from "../../components/Kit";
 import { StageRail } from "../../components/StageRail";
 import { StatusBadge } from "../../components/StatusBadge";
+import { EntregavelLink } from "../../components/EntregavelLink";
 import {
   getCursoNome,
   getEquipeMembros,
@@ -71,6 +71,22 @@ export function AdminEquipeDetalhePage() {
   const [mostrarNovaEtapa, setMostrarNovaEtapa] = useState(false);
   const [nomeEtapa, setNomeEtapa] = useState("");
   const [descEtapa, setDescEtapa] = useState("");
+  // resultado do último "disparar lembrete" por tarefa (ex.: "e-mail enviado a 3")
+  const [avisoLembrete, setAvisoLembrete] = useState<Record<number, string>>({});
+
+  async function handleDispararLembrete(idTarefa: number) {
+    setAvisoLembrete((prev) => ({ ...prev, [idTarefa]: "enviando…" }));
+    const lembrete = await dispararLembreteManual(idTarefa);
+    const qtd = lembrete?.destinatarios ?? 0;
+    const texto = !lembrete
+      ? "falhou"
+      : lembrete.modo_envio === "simulado"
+        ? `simulado (sem SMTP) · ${qtd} integrante(s)`
+        : lembrete.modo_envio === "teste"
+          ? `enviado ao e-mail de teste · ${qtd} integrante(s)`
+          : `e-mail enviado a ${qtd} integrante(s)`;
+    setAvisoLembrete((prev) => ({ ...prev, [idTarefa]: texto }));
+  }
 
   // só o admin atribui/remove mentores (a API também exige isso)
   const ehAdmin = usuarioAtual?.perfil === "admin";
@@ -382,12 +398,16 @@ export function AdminEquipeDetalhePage() {
                       )}
                       <div className="flex items-center gap-2">
                         <button
-                          onClick={() => dispararLembreteManual(t.id_tarefa)}
-                          className="text-[11px] font-medium text-brand-info flex items-center gap-1 hover:underline"
-                          title="Disparar lembrete manual (RF-20)"
+                          onClick={() => handleDispararLembrete(t.id_tarefa)}
+                          disabled={avisoLembrete[t.id_tarefa] === "enviando…"}
+                          className="text-[11px] font-medium text-brand-info flex items-center gap-1 hover:underline disabled:opacity-50"
+                          title="Enviar agora um e-mail de lembrete para todos os integrantes (RF-20)"
                         >
                           <Send size={11} /> lembrete
                         </button>
+                        {avisoLembrete[t.id_tarefa] && (
+                          <span className="text-[11px] text-text-faint">{avisoLembrete[t.id_tarefa]}</span>
+                        )}
                         {status === "Entregue" && (
                           <>
                             <button
@@ -412,8 +432,7 @@ export function AdminEquipeDetalhePage() {
                           const autor = usuarios.find((u) => u.id_usuario === a.id_usuario);
                           return (
                             <div key={a.id_entregavel} className="flex items-center gap-2 text-xs text-text-soft">
-                              <FileText size={13} className="text-text-faint shrink-0" />
-                              <span className="font-mono truncate">{a.arquivo_url.split("/").pop()}</span>
+                              <EntregavelLink entregavel={a} className="min-w-0" />
                               <span className="text-text-faint">
                                 · {autor?.nome.split(" ")[0]} · {formatarDataHora(a.data_envio)}
                               </span>

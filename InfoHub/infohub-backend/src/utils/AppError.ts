@@ -7,6 +7,10 @@ export class AppError extends Error {
     this.statusCode = statusCode;
   }
 
+  static badRequest(message = "Requisição inválida") {
+    return new AppError(message, 400);
+  }
+
   static notFound(message = "Recurso não encontrado") {
     return new AppError(message, 404);
   }
