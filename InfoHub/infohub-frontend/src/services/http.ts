@@ -9,9 +9,15 @@
 
 // Em produção (deploy único) o frontend é servido pelo próprio backend, então
 // a API está na MESMA origem: base vazia = chamadas relativas ("/api/...").
-// Em desenvolvimento (npm run dev, porta 5173) continua apontando pro :3333.
+// Só no servidor de desenvolvimento do Vite (npm run dev, porta 5173) é que
+// a API fica em outro endereço (http://localhost:3333).
+//
+// Usa MODE, e não PROD: o Coolify builda com NODE_ENV=development, e nesse
+// caso o Vite marca PROD=false mesmo no `vite build` — o que fazia o site
+// publicado tentar falar com localhost:3333. MODE continua "production" em
+// qualquer `vite build`.
 const BASE_URL = (
-  import.meta.env.VITE_API_URL ?? (import.meta.env.PROD ? "" : "http://localhost:3333")
+  import.meta.env.VITE_API_URL ?? (import.meta.env.MODE === "development" ? "http://localhost:3333" : "")
 ).replace(/\/+$/, "");
 
 const CHAVE_TOKEN = "infohub:token";
