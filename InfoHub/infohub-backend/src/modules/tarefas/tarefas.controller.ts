@@ -1,73 +1,66 @@
 import type { Request, Response } from "express";
 import { AppError } from "../../utils/AppError";
-import { getEquipesDoUsuario, papelDoUsuarioNaEquipe } from "../equipeUsuarios/equipeUsuarios.service";
-import { usuarioEhMentorDaEquipe } from "../equipes/equipes.service";
+import { equipesVisiveis, garantirAcessoEquipe } from "../../utils/acessoEquipe";
+import { papelDoUsuarioNaEquipe } from "../equipeUsuarios/equipeUsuarios.service";
 import * as service from "./tarefas.service";
+
+/*
+ * Acesso (seção 2 dos requisitos): admin vê as tarefas de todas as equipes;
+ * mentor só das equipes que mentora; aluno só das equipes que participa.
+ */
 
 export async function listar(req: Request, res: Response) {
   const { id_equipe, id_status } = req.query as unknown as { id_equipe?: number; id_status?: number };
 
-  if (req.usuario!.perfil === "aluno") {
-    if (id_equipe) {
-      const papel = await papelDoUsuarioNaEquipe(req.usuario!.id_usuario, id_equipe);
-      if (!papel) throw AppError.forbidden("Você não participa desta equipe");
-      return res.json(await service.listarTarefas({ id_equipe, id_status }));
-    }
-    const idsEquipes = await getEquipesDoUsuario(req.usuario!.id_usuario);
-    if (idsEquipes.length === 0) return res.json([]);
-    const todas = await Promise.all(idsEquipes.map((id) => service.listarTarefas({ id_equipe: id, id_status })));
-    return res.json(todas.flat());
+  if (id_equipe) {
+    await garantirAcessoEquipe(req.usuario!, id_equipe);
+    return res.json(await service.listarTarefas({ id_equipe, id_status }));
   }
 
-  res.json(await service.listarTarefas({ id_equipe, id_status }));
+  const visiveis = await equipesVisiveis(req.usuario!);
+  if (visiveis === null) return res.json(await service.listarTarefas({ id_status }));
+  if (visiveis.length === 0) return res.json([]);
+
+  const porEquipe = await Promise.all(visiveis.map((id) => service.listarTarefas({ id_equipe: id, id_status })));
+  res.json(porEquipe.flat());
 }
 
 export async function buscarPorId(req: Request, res: Response) {
   const { id } = req.params as unknown as { id: number };
   const tarefa = await service.buscarTarefaPorId(id);
-
-  if (req.usuario!.perfil === "aluno") {
-    const papel = await papelDoUsuarioNaEquipe(req.usuario!.id_usuario, tarefa.id_equipe);
-    if (!papel) throw AppError.forbidden("Você não participa da equipe dona desta tarefa");
-  }
-
+  await garantirAcessoEquipe(req.usuario!, tarefa.id_equipe);
   res.json(tarefa);
 }
 
+/** Admin cria para qualquer equipe; mentor só para as equipes que mentora. */
 export async function criar(req: Request, res: Response) {
+  const { id_equipe } = req.body as { id_equipe: number };
+  await garantirAcessoEquipe(req.usuario!, id_equipe);
   const tarefa = await service.criarTarefa(req.body);
   res.status(201).json(tarefa);
 }
 
-/** RF-15: aprovar ou pedir ajuste — restrito a admin/mentor (ver rota). */
+/** RF-15: aprovar ou pedir ajuste — admin, ou mentor desta equipe. */
 export async function atualizarStatus(req: Request, res: Response) {
   const { id } = req.params as unknown as { id: number };
   const { id_status } = req.body as { id_status: number };
-  const tarefa = await service.atualizarStatus(id, id_status);
-  res.json(tarefa);
+  const tarefa = await service.buscarTarefaPorId(id);
+  await garantirAcessoEquipe(req.usuario!, tarefa.id_equipe);
+  res.json(await service.atualizarStatus(id, id_status));
 }
 
 /**
- * Esclarecido com o cliente: só o mentor pode alterar o prazo.
- * "Mentor" aqui significa: tem perfil='mentor' (mentor acompanha o sistema
- * todo), OU é admin mas foi explicitamente adicionado como mentor DESTA
- * equipe em equipe_mentor (ver conversa "e se um admin quiser ser mentor?").
- * Um admin comum, sem vínculo de mentoria com a equipe, não pode.
+ * Requisito (seção 2): o administrador "define e atribui tarefas e prazos",
+ * e o mentor tem as mesmas permissões restritas às próprias equipes.
+ * Então: admin altera o prazo de qualquer tarefa; mentor só das equipes
+ * que mentora. (Antes, um admin sem vínculo de mentoria não podia.)
  */
 export async function atualizarPrazo(req: Request, res: Response) {
   const { id } = req.params as unknown as { id: number };
   const { data_limite } = req.body as { data_limite: string };
-
   const tarefa = await service.buscarTarefaPorId(id);
-  const usuario = req.usuario!;
-  const podeEditar =
-    usuario.perfil === "mentor" || (await usuarioEhMentorDaEquipe(usuario.id_usuario, tarefa.id_equipe));
-  if (!podeEditar) {
-    throw AppError.forbidden("Só o mentor pode alterar o prazo de uma tarefa");
-  }
-
-  const atualizada = await service.atualizarPrazo(id, data_limite);
-  res.json(atualizada);
+  await garantirAcessoEquipe(req.usuario!, tarefa.id_equipe);
+  res.json(await service.atualizarPrazo(id, data_limite));
 }
 
 /**
@@ -97,11 +90,6 @@ export async function enviarEntregavel(req: Request, res: Response) {
 export async function listarEntregaveis(req: Request, res: Response) {
   const { id } = req.params as unknown as { id: number };
   const tarefa = await service.buscarTarefaPorId(id);
-
-  if (req.usuario!.perfil === "aluno") {
-    const papel = await papelDoUsuarioNaEquipe(req.usuario!.id_usuario, tarefa.id_equipe);
-    if (!papel) throw AppError.forbidden("Você não participa da equipe dona desta tarefa");
-  }
-
+  await garantirAcessoEquipe(req.usuario!, tarefa.id_equipe);
   res.json(await service.listarEntregaveis(id));
 }

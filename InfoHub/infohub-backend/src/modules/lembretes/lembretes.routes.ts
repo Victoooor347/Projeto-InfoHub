@@ -4,6 +4,15 @@ import { z } from "zod";
 import { authenticate, requireRole } from "../../middlewares/auth";
 import { validate } from "../../middlewares/validate";
 import { query } from "../../config/db";
+import { AppError } from "../../utils/AppError";
+import { filtrarPorEquipesVisiveis, garantirAcessoEquipe } from "../../utils/acessoEquipe";
+
+/** Equipe dona da tarefa — lembrete não tem id_equipe próprio. */
+async function equipeDaTarefa(id_tarefa: number): Promise<number> {
+  const r = await query<{ id_equipe: number }>(`SELECT id_equipe FROM tarefa WHERE id_tarefa = $1`, [id_tarefa]);
+  if (!r.rows[0]) throw AppError.notFound("Tarefa não encontrada");
+  return r.rows[0].id_equipe;
+}
 
 export const lembretesRouter = Router();
 
@@ -23,13 +32,18 @@ lembretesRouter.get(
   async (req: Request, res: Response) => {
     const { id_tarefa } = req.query as unknown as { id_tarefa?: number };
     if (id_tarefa) {
+      await garantirAcessoEquipe(req.usuario!, await equipeDaTarefa(id_tarefa));
       const r = await query(`SELECT * FROM lembrete WHERE id_tarefa = $1 ORDER BY data_programada`, [
         id_tarefa,
       ]);
       return res.json(r.rows);
     }
-    const r = await query(`SELECT * FROM lembrete ORDER BY data_programada`);
-    res.json(r.rows);
+    // id_equipe vem da tarefa só para o filtro do mentor; não vai na resposta
+    const r = await query<{ id_equipe: number }>(
+      `SELECT l.*, t.id_equipe FROM lembrete l JOIN tarefa t ON t.id_tarefa = l.id_tarefa ORDER BY l.data_programada`
+    );
+    const visiveis = await filtrarPorEquipesVisiveis(req.usuario!, r.rows);
+    res.json(visiveis.map(({ id_equipe: _ignorado, ...lembrete }) => lembrete));
   }
 );
 
@@ -44,6 +58,7 @@ lembretesRouter.post(
   validate({ body: criarSchema }),
   async (req: Request, res: Response) => {
     const { id_tarefa } = req.body as { id_tarefa: number };
+    await garantirAcessoEquipe(req.usuario!, await equipeDaTarefa(id_tarefa));
     const r = await query(
       `INSERT INTO lembrete (data_programada, enviado, id_tarefa) VALUES (CURRENT_DATE, TRUE, $1) RETURNING *`,
       [id_tarefa]

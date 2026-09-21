@@ -20,9 +20,25 @@ interface Colega {
 }
 
 export function InscricaoPage() {
-  const { cursos, registrarCadastroInicial } = useData();
-  const { entrarComToken } = useAuth();
+  const { cursos, registrarCadastroInicial, recarregar } = useData();
+  const { usuarioAtual, entrarComToken } = useAuth();
   const navigate = useNavigate();
+
+  // Requisito (seção 2): o administrador também "cadastra alunos e equipes".
+  // Ele usa este mesmo formulário (botão "Nova equipe" no funil); nesse modo,
+  // ao terminar ele continua logado como admin e volta para o painel, em vez
+  // de entrar na conta do líder que acabou de cadastrar.
+  const modoAdmin = usuarioAtual?.perfil === "admin";
+
+  async function concluir(resposta: RespostaInscricao) {
+    if (modoAdmin) {
+      await recarregar();
+      navigate("/admin/equipes");
+    } else {
+      entrarComToken(resposta.token, resposta.usuario);
+      navigate("/aluno");
+    }
+  }
 
   const [nome, setNome] = useState("");
   const [telefone, setTelefone] = useState("");
@@ -94,10 +110,7 @@ export function InscricaoPage() {
       // Senão, para na tela de sucesso até o líder anotar as senhas provisórias.
       setResultado(resposta);
       if (resposta.colegas_criados.length === 0) {
-        setTimeout(() => {
-          entrarComToken(resposta.token, resposta.usuario);
-          navigate("/aluno");
-        }, 1400);
+        setTimeout(() => void concluir(resposta), 1400);
       }
     } catch (falha) {
       setErro(mensagemDeErro(falha));
@@ -113,15 +126,19 @@ export function InscricaoPage() {
         <Card className="p-10 text-center max-w-md">
           <CheckCircle2 className="mx-auto text-brand-success" size={40} />
           <h2 className="font-display text-xl font-semibold text-ink mt-4">Ideia enviada!</h2>
-          <p className="text-text-soft text-sm mt-2">Sua equipe entrou na Etapa 1 do funil.</p>
+          <p className="text-text-soft text-sm mt-2">
+            {modoAdmin ? "A equipe entrou na Etapa 1 do funil." : "Sua equipe entrou na Etapa 1 do funil."}
+          </p>
 
           {colegasNovos.length === 0 ? (
-            <p className="text-text-soft text-sm mt-2">Redirecionando para sua área…</p>
+            <p className="text-text-soft text-sm mt-2">
+              {modoAdmin ? "Voltando para o funil…" : "Redirecionando para sua área…"}
+            </p>
           ) : (
             <>
               <p className="text-text-soft text-sm mt-4 text-left">
-                Criamos contas para os colegas abaixo. <strong>Anote e repasse as senhas agora</strong> — elas não
-                serão mostradas de novo.
+                Criamos contas para os integrantes abaixo. <strong>Anote e repasse as senhas agora</strong> — elas
+                não serão mostradas de novo.
               </p>
               <ul className="mt-3 space-y-2 text-left">
                 {colegasNovos.map((c) => (
@@ -134,10 +151,7 @@ export function InscricaoPage() {
               </ul>
               <PrimaryButton
                 className="mt-5 w-full"
-                onClick={() => {
-                  entrarComToken(resultado.token, resultado.usuario);
-                  navigate("/aluno");
-                }}
+                onClick={() => void concluir(resultado)}
               >
                 Já anotei, continuar
               </PrimaryButton>
@@ -153,9 +167,15 @@ export function InscricaoPage() {
       <header className="border-b border-paper-line bg-white">
         <div className="max-w-2xl mx-auto px-4 sm:px-6 py-4 flex items-center justify-between">
           <Logo />
-          <Link to="/login" className="text-sm text-text-soft hover:text-ink flex items-center gap-1.5">
-            <ArrowLeft size={15} /> Já tenho conta
-          </Link>
+          {modoAdmin ? (
+            <Link to="/admin/equipes" className="text-sm text-text-soft hover:text-ink flex items-center gap-1.5">
+              <ArrowLeft size={15} /> Voltar ao painel
+            </Link>
+          ) : (
+            <Link to="/login" className="text-sm text-text-soft hover:text-ink flex items-center gap-1.5">
+              <ArrowLeft size={15} /> Já tenho conta
+            </Link>
+          )}
         </div>
       </header>
 

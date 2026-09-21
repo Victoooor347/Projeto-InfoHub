@@ -40,6 +40,13 @@ equipeMentoresRouter.get(
         `em.id_equipe IN (SELECT id_equipe FROM equipe_usuario WHERE id_usuario = $${params.length})`
       );
     }
+    // mentor: só as equipes que ele mentora (seção 2 dos requisitos)
+    if (usuario.perfil === "mentor") {
+      params.push(usuario.id_usuario);
+      condicoes.push(
+        `em.id_equipe IN (SELECT id_equipe FROM equipe_mentor WHERE id_usuario = $${params.length})`
+      );
+    }
 
     const where = condicoes.length ? `WHERE ${condicoes.join(" AND ")}` : "";
     const r = await query<{ id_equipe: number; id_usuario: number }>(

@@ -4,6 +4,7 @@ import { z } from "zod";
 import { authenticate, requireRole } from "../../middlewares/auth";
 import { validate } from "../../middlewares/validate";
 import { query } from "../../config/db";
+import { filtrarPorEquipesVisiveis } from "../../utils/acessoEquipe";
 
 export const entregaveisRouter = Router();
 
@@ -21,13 +22,18 @@ entregaveisRouter.get(
   validate({ query: querySchema }),
   async (req: Request, res: Response) => {
     const { id_tarefa } = req.query as unknown as { id_tarefa?: number };
-    if (id_tarefa) {
-      const r = await query(`SELECT * FROM entregavel WHERE id_tarefa = $1 ORDER BY data_envio DESC`, [
-        id_tarefa,
-      ]);
-      return res.json(r.rows);
-    }
-    const r = await query(`SELECT * FROM entregavel ORDER BY data_envio DESC`);
-    res.json(r.rows);
+    // id_equipe vem da tarefa só para o filtro do mentor; não vai na resposta
+    const r = id_tarefa
+      ? await query<{ id_equipe: number }>(
+          `SELECT e.*, t.id_equipe FROM entregavel e JOIN tarefa t ON t.id_tarefa = e.id_tarefa
+           WHERE e.id_tarefa = $1 ORDER BY e.data_envio DESC`,
+          [id_tarefa]
+        )
+      : await query<{ id_equipe: number }>(
+          `SELECT e.*, t.id_equipe FROM entregavel e JOIN tarefa t ON t.id_tarefa = e.id_tarefa
+           ORDER BY e.data_envio DESC`
+        );
+    const visiveis = await filtrarPorEquipesVisiveis(req.usuario!, r.rows);
+    res.json(visiveis.map(({ id_equipe: _ignorado, ...entregavel }) => entregavel));
   }
 );

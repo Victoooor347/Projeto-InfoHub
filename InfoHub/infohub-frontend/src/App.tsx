@@ -13,6 +13,7 @@ import { AdminEquipesPage } from "./pages/admin/AdminEquipesPage";
 import { AdminEquipeDetalhePage } from "./pages/admin/AdminEquipeDetalhePage";
 import { AdminTarefasPage } from "./pages/admin/AdminTarefasPage";
 import { AdminRelatoriosPage } from "./pages/admin/AdminRelatoriosPage";
+import { AdminUsuariosPage } from "./pages/admin/AdminUsuariosPage";
 import { AlunoDashboardPage } from "./pages/aluno/AlunoDashboardPage";
 import { AlunoTarefasPage } from "./pages/aluno/AlunoTarefasPage";
 import { AlunoTarefaDetalhePage } from "./pages/aluno/AlunoTarefaDetalhePage";
@@ -40,6 +41,7 @@ export default function App() {
               <Route path="equipes/:id" element={<AdminEquipeDetalhePage />} />
               <Route path="tarefas" element={<AdminTarefasPage />} />
               <Route path="relatorios" element={<AdminRelatoriosPage />} />
+              <Route path="usuarios" element={<AdminUsuariosPage />} />
             </Route>
 
             <Route

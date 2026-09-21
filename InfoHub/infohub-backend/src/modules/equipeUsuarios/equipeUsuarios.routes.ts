@@ -3,6 +3,7 @@ import { Router } from "express";
 import type { Request, Response } from "express";
 import { authenticate } from "../../middlewares/auth";
 import { validate } from "../../middlewares/validate";
+import { filtrarPorEquipesVisiveis, garantirAcessoEquipe } from "../../utils/acessoEquipe";
 import * as service from "./equipeUsuarios.service";
 
 const querySchema = z.object({
@@ -32,7 +33,9 @@ equipeUsuariosRouter.get(
       return res.json(rows);
     }
 
+    // admin: tudo. mentor: só os vínculos das equipes que ele mentora.
+    if (id_equipe) await garantirAcessoEquipe(req.usuario!, id_equipe);
     const rows = await service.listarEquipeUsuarios({ id_equipe, id_usuario });
-    res.json(rows);
+    res.json(await filtrarPorEquipesVisiveis(req.usuario!, rows));
   }
 );

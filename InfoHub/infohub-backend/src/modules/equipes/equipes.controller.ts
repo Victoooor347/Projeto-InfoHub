@@ -1,7 +1,14 @@
 import type { Request, Response } from "express";
 import { AppError } from "../../utils/AppError";
+import { filtrarPorEquipesVisiveis, garantirAcessoEquipe } from "../../utils/acessoEquipe";
 import { papelDoUsuarioNaEquipe } from "../equipeUsuarios/equipeUsuarios.service";
 import * as service from "./equipes.service";
+
+/*
+ * Acesso (seção 2 dos requisitos): admin vê todas as equipes; mentor só as
+ * que ele mentora (equipe_mentor); aluno só as que participa. A checagem
+ * fica em utils/acessoEquipe.ts.
+ */
 
 export async function listar(req: Request, res: Response) {
   const { busca, area, mentor } = req.query as unknown as {
@@ -10,40 +17,35 @@ export async function listar(req: Request, res: Response) {
     mentor?: number;
   };
   const equipes = await service.listarEquipes({ busca, area, mentor });
-  res.json(equipes);
+  res.json(await filtrarPorEquipesVisiveis(req.usuario!, equipes));
 }
 
 export async function buscarPorId(req: Request, res: Response) {
   const { id } = req.params as unknown as { id: number };
-
-  if (req.usuario!.perfil === "aluno") {
-    const papel = await papelDoUsuarioNaEquipe(req.usuario!.id_usuario, id);
-    if (!papel) throw AppError.forbidden("Você não participa desta equipe");
-  }
-
-  const equipe = await service.buscarEquipePorId(id);
-  res.json(equipe);
+  await garantirAcessoEquipe(req.usuario!, id);
+  res.json(await service.buscarEquipePorId(id));
 }
 
 export async function avancarEtapa(req: Request, res: Response) {
   const { id } = req.params as unknown as { id: number };
   const { delta } = req.body as { delta: 1 | -1 };
-  const equipe = await service.avancarEtapa(id, delta);
-  res.json(equipe);
+  await garantirAcessoEquipe(req.usuario!, id);
+  res.json(await service.avancarEtapa(id, delta));
 }
 
 export async function marcarPronto(req: Request, res: Response) {
   const { id } = req.params as unknown as { id: number };
   const { pronto } = req.body as { pronto: boolean };
-  const equipe = await service.marcarProntoParaInovAMF(id, pronto);
-  res.json(equipe);
+  await garantirAcessoEquipe(req.usuario!, id);
+  res.json(await service.marcarProntoParaInovAMF(id, pronto));
 }
 
 export async function atualizarLinkPitch(req: Request, res: Response) {
   const { id } = req.params as unknown as { id: number };
   const { link_pitch } = req.body as { link_pitch: string };
 
-  // admin/mentor sempre podem; um aluno só pode se for líder DESTA equipe
+  await garantirAcessoEquipe(req.usuario!, id);
+  // além de participar, o aluno precisa ser o LÍDER desta equipe
   // (Q1: líder e integrante têm permissões diferentes).
   if (req.usuario!.perfil === "aluno") {
     const papel = await papelDoUsuarioNaEquipe(req.usuario!.id_usuario, id);
@@ -52,35 +54,22 @@ export async function atualizarLinkPitch(req: Request, res: Response) {
     }
   }
 
-  const equipe = await service.atualizarLinkPitch(id, link_pitch);
-  res.json(equipe);
+  res.json(await service.atualizarLinkPitch(id, link_pitch));
 }
 
 export async function listarIntegrantes(req: Request, res: Response) {
   const { id } = req.params as unknown as { id: number };
-
-  // aluno só enxerga os integrantes de uma equipe da qual ele participa
-  if (req.usuario!.perfil === "aluno") {
-    const papel = await papelDoUsuarioNaEquipe(req.usuario!.id_usuario, id);
-    if (!papel) throw AppError.forbidden("Você não participa desta equipe");
-  }
-
-  const integrantes = await service.listarIntegrantesDaEquipe(id);
-  res.json(integrantes);
+  await garantirAcessoEquipe(req.usuario!, id);
+  res.json(await service.listarIntegrantesDaEquipe(id));
 }
 
 export async function listarMentores(req: Request, res: Response) {
   const { id } = req.params as unknown as { id: number };
-
-  // mesma regra de integrantes/etapas: aluno só vê equipes das quais participa
-  if (req.usuario!.perfil === "aluno") {
-    const papel = await papelDoUsuarioNaEquipe(req.usuario!.id_usuario, id);
-    if (!papel) throw AppError.forbidden("Você não participa desta equipe");
-  }
-  const mentores = await service.listarMentoresDaEquipe(id);
-  res.json(mentores);
+  await garantirAcessoEquipe(req.usuario!, id);
+  res.json(await service.listarMentoresDaEquipe(id));
 }
 
+/** Só admin (ver rota): é o admin quem atribui mentores às equipes. */
 export async function adicionarMentor(req: Request, res: Response) {
   const { id } = req.params as unknown as { id: number };
   const { id_usuario } = req.body as { id_usuario: number };
@@ -96,23 +85,16 @@ export async function removerMentor(req: Request, res: Response) {
 
 export async function listarEtapas(req: Request, res: Response) {
   const { id } = req.params as unknown as { id: number };
-
-  if (req.usuario!.perfil === "aluno") {
-    const papel = await papelDoUsuarioNaEquipe(req.usuario!.id_usuario, id);
-    if (!papel) throw AppError.forbidden("Você não participa desta equipe");
-  }
-
-  const etapas = await service.listarEtapasDaEquipe(id);
-  res.json(etapas);
+  await garantirAcessoEquipe(req.usuario!, id);
+  res.json(await service.listarEtapasDaEquipe(id));
 }
 
 /**
  * Decisão do InfoHub (WhatsApp): "a jornada padrão segue com 6 etapas,
  * mas o mentor pode acrescentar etapas extras por equipe". Por isso, só
- * quem é mentor DESTA equipe especificamente pode criar — mesmo critério
- * já usado para "só o mentor pode alterar o prazo de uma tarefa"
- * (usuarioEhMentorDaEquipe). Um admin sem vínculo de mentoria com essa
- * equipe não pode, e um mentor de OUTRA equipe também não pode.
+ * quem é mentor DESTA equipe especificamente pode criar. Um admin sem
+ * vínculo de mentoria com essa equipe não pode, e um mentor de OUTRA
+ * equipe também não pode.
  */
 export async function criarEtapa(req: Request, res: Response) {
   const { id } = req.params as unknown as { id: number };

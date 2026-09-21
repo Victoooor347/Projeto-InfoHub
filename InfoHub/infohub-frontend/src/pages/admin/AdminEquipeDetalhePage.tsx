@@ -72,7 +72,8 @@ export function AdminEquipeDetalhePage() {
   const [nomeEtapa, setNomeEtapa] = useState("");
   const [descEtapa, setDescEtapa] = useState("");
 
-  const ehMentor = usuarioAtual?.perfil === "mentor";
+  // só o admin atribui/remove mentores (a API também exige isso)
+  const ehAdmin = usuarioAtual?.perfil === "admin";
 
   const membros = useMemo(
     () => (equipe ? getEquipeMembros(equipeUsuarios, usuarios, equipe.id_equipe) : []),
@@ -90,9 +91,11 @@ export function AdminEquipeDetalhePage() {
     [etapas, idEquipe]
   );
   // Decisão do InfoHub (WhatsApp): só o mentor DESTA equipe pode acrescentar
-  // etapa extra — não basta ser mentor em geral (ehMentor), tem que estar
+  // etapa extra — não basta ser mentor em geral, tem que estar
   // na lista de mentores desta equipe especificamente.
   const souMentorDestaEquipe = mentoresEquipe.some((m) => m.id_usuario === usuarioAtual?.id_usuario);
+  // Requisito (seção 2): admin define prazos; mentor também, nas equipes dele.
+  const podeAlterarPrazo = ehAdmin || souMentorDestaEquipe;
 
   if (!equipe) {
     return (
@@ -362,16 +365,16 @@ export function AdminEquipeDetalhePage() {
                               ({dias >= 0 ? `${dias}d restantes` : `${Math.abs(dias)}d atraso`})
                             </span>
                           )}
-                          {ehMentor ? (
+                          {podeAlterarPrazo ? (
                             <button
                               onClick={() => setTarefaEditandoPrazo(t.id_tarefa)}
                               className="text-text-faint hover:text-accent-orange transition"
-                              title="Alterar prazo (apenas mentores)"
+                              title="Alterar prazo"
                             >
                               <Pencil size={11} />
                             </button>
                           ) : (
-                            <span title="Apenas mentores podem alterar o prazo">
+                            <span title="Só o admin ou um mentor desta equipe pode alterar o prazo">
                               <Lock size={10} className="text-text-faint" />
                             </span>
                           )}
@@ -475,6 +478,7 @@ export function AdminEquipeDetalhePage() {
                       <Mail size={12} /> {mentor.email}
                     </p>
                   </div>
+                  {ehAdmin && (
                   <button
                     onClick={() => removerMentor(idEquipe, mentor.id_usuario)}
                     className="p-1 rounded-md text-text-faint hover:text-brand-danger hover:bg-brand-danger-soft transition shrink-0"
@@ -482,10 +486,11 @@ export function AdminEquipeDetalhePage() {
                   >
                     <X size={13} />
                   </button>
+                  )}
                 </div>
               ))}
             </div>
-            {mentoresDisponiveis.length > 0 && (
+            {ehAdmin && mentoresDisponiveis.length > 0 && (
               <form
                 className="mt-4 pt-4 border-t border-paper-line flex gap-2"
                 onSubmit={(e) => {

@@ -1,7 +1,8 @@
 import { useMemo, useState } from "react";
 import { Link } from "react-router-dom";
-import { Search, User, Sparkles } from "lucide-react";
+import { Search, User, Sparkles, Plus } from "lucide-react";
 import { useData } from "../../store/DataContext";
+import { useAuth } from "../../store/AuthContext";
 import { Card } from "../../components/Kit";
 import {
   getCursoNome,
@@ -28,6 +29,8 @@ const ULTIMA_ORDEM_PADRAO = NOMES_ETAPAS_PADRAO.length; // 6
 
 export function AdminEquipesPage() {
   const { equipes, usuarios, equipeUsuarios, cursos, tarefas, statusTarefa, equipeMentores } = useData();
+  const { usuarioAtual } = useAuth();
+  const ehAdmin = usuarioAtual?.perfil === "admin";
 
   const [busca, setBusca] = useState("");
   const [area, setArea] = useState<AreaIdeia | "todas">("todas");
@@ -85,11 +88,25 @@ export function AdminEquipesPage() {
 
   return (
     <div className="p-6 sm:p-8 max-w-[1400px] mx-auto">
-      <p className="font-mono text-xs text-accent-orange font-medium tracking-wide">FUNIL DE EQUIPES</p>
-      <h1 className="font-display text-2xl sm:text-3xl font-semibold text-ink mt-1">Kanban da jornada</h1>
-      <p className="text-text-soft text-sm mt-1">
-        As 6 etapas padrão, mais uma coluna para quem já está em etapas extras criadas pelo mentor.
-      </p>
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <p className="font-mono text-xs text-accent-orange font-medium tracking-wide">FUNIL DE EQUIPES</p>
+          <h1 className="font-display text-2xl sm:text-3xl font-semibold text-ink mt-1">Kanban da jornada</h1>
+          <p className="text-text-soft text-sm mt-1">
+            {ehAdmin
+              ? "As 6 etapas padrão, mais uma coluna para quem já está em etapas extras criadas pelo mentor."
+              : "Somente as equipes sob a sua mentoria."}
+          </p>
+        </div>
+        {ehAdmin && (
+          <Link
+            to="/inscricao"
+            className="gradient-brand text-white text-sm font-semibold px-4 py-2.5 rounded-xl shadow-sm hover:brightness-105 transition flex items-center gap-1.5"
+          >
+            <Plus size={16} /> Nova equipe
+          </Link>
+        )}
+      </div>
 
       <div className="flex flex-wrap gap-3 mt-6">
         <div className="relative flex-1 min-w-[220px]">

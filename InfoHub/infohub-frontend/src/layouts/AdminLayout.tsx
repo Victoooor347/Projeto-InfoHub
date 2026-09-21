@@ -1,5 +1,5 @@
 import { NavLink, Outlet, useNavigate } from "react-router-dom";
-import { LayoutDashboard, KanbanSquare, ListChecks, BarChart3, LogOut, GraduationCap } from "lucide-react";
+import { LayoutDashboard, KanbanSquare, ListChecks, BarChart3, LogOut, GraduationCap, Users } from "lucide-react";
 import { Logo } from "../components/Logo";
 import { FaixaErro, TelaCarregando } from "../components/Kit";
 import { useAuth } from "../store/AuthContext";
@@ -10,6 +10,8 @@ const navItems = [
   { to: "/admin/equipes", label: "Funil de equipes", icon: KanbanSquare },
   { to: "/admin/tarefas", label: "Tarefas", icon: ListChecks },
   { to: "/admin/relatorios", label: "Relatórios", icon: BarChart3 },
+  // só admin cadastra usuários (seção 2 dos requisitos)
+  { to: "/admin/usuarios", label: "Usuários", icon: Users, somenteAdmin: true },
 ];
 
 export function AdminLayout() {
@@ -30,7 +32,9 @@ export function AdminLayout() {
           <p className="text-[11px] text-white/50 mt-1 font-mono">painel · coordenação</p>
         </div>
         <nav className="flex-1 px-3 py-5 space-y-1">
-          {navItems.map((item) => (
+          {navItems
+            .filter((item) => !item.somenteAdmin || usuarioAtual?.perfil === "admin")
+            .map((item) => (
             <NavLink
               key={item.to}
               to={item.to}

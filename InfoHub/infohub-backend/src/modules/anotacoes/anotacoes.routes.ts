@@ -5,6 +5,7 @@ import { authenticate, requireRole } from "../../middlewares/auth";
 import { validate } from "../../middlewares/validate";
 import { query } from "../../config/db";
 import { validarEtapaPertenceEquipe } from "../equipes/equipes.service";
+import { filtrarPorEquipesVisiveis, garantirAcessoEquipe } from "../../utils/acessoEquipe";
 
 export const anotacoesRouter = Router();
 
@@ -27,14 +28,16 @@ anotacoesRouter.get(
   async (req: Request, res: Response) => {
     const { id_equipe } = req.query as unknown as { id_equipe?: number };
     if (id_equipe) {
+      await garantirAcessoEquipe(req.usuario!, id_equipe);
       const r = await query(
         `SELECT * FROM anotacoes WHERE id_equipe = $1 ORDER BY data_registro DESC`,
         [id_equipe]
       );
       return res.json(r.rows);
     }
-    const r = await query(`SELECT * FROM anotacoes ORDER BY data_registro DESC`);
-    res.json(r.rows);
+    const r = await query<{ id_equipe: number }>(`SELECT * FROM anotacoes ORDER BY data_registro DESC`);
+    // mentor só recebe as anotações das equipes que mentora
+    res.json(await filtrarPorEquipesVisiveis(req.usuario!, r.rows));
   }
 );
 
@@ -49,6 +52,7 @@ anotacoesRouter.post(
       id_equipe: number;
       id_etapa: number;
     };
+    await garantirAcessoEquipe(req.usuario!, id_equipe);
     await validarEtapaPertenceEquipe(id_etapa, id_equipe);
     const r = await query(
       `INSERT INTO anotacoes (descricao, id_usuario, id_equipe, id_etapa) VALUES ($1,$2,$3,$4) RETURNING *`,
