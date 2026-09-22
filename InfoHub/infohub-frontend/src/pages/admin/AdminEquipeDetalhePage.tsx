@@ -162,6 +162,19 @@ export function AdminEquipeDetalhePage() {
     setMostrarNovaEtapa(false);
   }
 
+
+  // Regra: só avança (e só aprova para o InovAMF) quando TODAS as tarefas da
+  // etapa atual estão aprovadas. O backend também confere.
+  const tarefasBloqueando = tarefasEquipe.filter(
+    (t) => t.id_etapa === equipe.id_etapa_atual && getStatusDescricao(statusTarefa, t.id_status) !== "Aprovada"
+  );
+  const avisoBloqueio =
+    tarefasBloqueando.length > 0
+      ? `Aprove antes ${tarefasBloqueando.length === 1 ? "a tarefa" : `as ${tarefasBloqueando.length} tarefas`} desta etapa: ${tarefasBloqueando
+          .map((t) => t.titulo)
+          .join(", ")}`
+      : null;
+
   return (
     <div className="p-6 sm:p-8 max-w-6xl mx-auto">
       <button
@@ -222,15 +235,21 @@ export function AdminEquipeDetalhePage() {
               </button>
               <button
                 onClick={() => avancarEtapa(idEquipe, 1)}
-                disabled={equipe.etapa_atual_ordem === equipe.total_etapas}
+                disabled={equipe.etapa_atual_ordem === equipe.total_etapas || Boolean(avisoBloqueio)}
                 className="p-1.5 rounded-lg border border-paper-line disabled:opacity-30 hover:bg-paper-alt transition"
-                title="Avançar etapa (RF-09)"
+                title={avisoBloqueio ?? "Avançar etapa (RF-09)"}
               >
                 <ChevronRight size={16} />
               </button>
             </div>
           </div>
           <StageRail etapas={etapasEquipe} ordemAtual={equipe.etapa_atual_ordem} pronto={equipe.pronto_para_inovamf} />
+
+          {avisoBloqueio && equipe.etapa_atual_ordem < equipe.total_etapas && (
+            <p className="mt-3 text-xs text-text-soft flex items-center gap-1.5">
+              <Lock size={12} className="text-text-faint shrink-0" /> {avisoBloqueio} — só então dá para avançar.
+            </p>
+          )}
 
           {/* Última etapa da jornada: admin ou mentor da equipe decide se ela
               está pronta para seguir para o InovAMF. Se a equipe voltar uma
@@ -245,14 +264,19 @@ export function AdminEquipeDetalhePage() {
                 <Sparkles size={15} className={equipe.pronto_para_inovamf ? "text-brand-success" : "text-accent-orange"} />
                 {equipe.pronto_para_inovamf
                   ? "Equipe aprovada: pronta para o InovAMF."
-                  : "A equipe está na última etapa. Ela está pronta para o InovAMF?"}
+                  : avisoBloqueio
+                    ? `${avisoBloqueio} — depois disso a equipe pode ser aprovada para o InovAMF.`
+                    : "A equipe está na última etapa. Ela está pronta para o InovAMF?"}
               </p>
               {equipe.pronto_para_inovamf ? (
                 <SecondaryButton onClick={() => marcarProntoParaInovAMF(idEquipe, false)}>
                   Desfazer aprovação
                 </SecondaryButton>
               ) : (
-                <PrimaryButton onClick={() => marcarProntoParaInovAMF(idEquipe, true)}>
+                <PrimaryButton
+                  onClick={() => marcarProntoParaInovAMF(idEquipe, true)}
+                  disabled={Boolean(avisoBloqueio)}
+                >
                   Aprovar para o InovAMF
                 </PrimaryButton>
               )}
@@ -436,14 +460,18 @@ export function AdminEquipeDetalhePage() {
                         {avisoLembrete[t.id_tarefa] && (
                           <span className="text-[11px] text-text-faint">{avisoLembrete[t.id_tarefa]}</span>
                         )}
+                        {status !== "Aprovada" && (
+                          // sem entrega (ex.: resolvida no encontro) o mentor também pode aprovar
+                          <button
+                            onClick={() => atualizarStatusTarefa(t.id_tarefa, 5)}
+                            className="text-[11px] font-semibold text-brand-success hover:underline"
+                            title={status === "Entregue" ? "Aprovar a entrega" : "Aprovar mesmo sem entrega (ex.: resolvida no encontro)"}
+                          >
+                            Aprovar
+                          </button>
+                        )}
                         {status === "Entregue" && (
                           <>
-                            <button
-                              onClick={() => atualizarStatusTarefa(t.id_tarefa, 5)}
-                              className="text-[11px] font-semibold text-brand-success hover:underline"
-                            >
-                              Aprovar
-                            </button>
                             <button
                               onClick={() => atualizarStatusTarefa(t.id_tarefa, 6)}
                               className="text-[11px] font-semibold text-brand-danger hover:underline"

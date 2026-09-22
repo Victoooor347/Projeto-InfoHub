@@ -68,6 +68,26 @@ export async function listarEtapasDaEquipe(id_equipe: number): Promise<Etapa[]> 
   return r.rows;
 }
 
+/**
+ * Lança 409 se a etapa tiver alguma tarefa que ainda não foi aprovada
+ * (pendente, em andamento, entregue sem avaliação, atrasada ou em ajuste).
+ * A mensagem lista as tarefas, para o mentor saber o que resolver.
+ */
+async function garantirTarefasDaEtapaAprovadas(id_equipe: number, id_etapa: number, acao: string) {
+  const r = await query<{ titulo: string; status: string }>(
+    `SELECT t.titulo, s.descricao AS status
+       FROM tarefa t JOIN status_tarefa s ON s.id_status = t.id_status
+      WHERE t.id_equipe = $1 AND t.id_etapa = $2 AND s.descricao <> 'Aprovada'
+      ORDER BY t.data_limite`,
+    [id_equipe, id_etapa]
+  );
+  if (r.rows.length === 0) return;
+  const lista = r.rows.map((t) => `"${t.titulo}" (${t.status})`).join(", ");
+  throw AppError.conflict(
+    `Para ${acao}, aprove antes ${r.rows.length === 1 ? "a tarefa" : "as tarefas"} desta etapa: ${lista}`
+  );
+}
+
 async function buscarEtapaAtualComOrdem(equipe: Equipe): Promise<Etapa> {
   const r = await query<Etapa>(`SELECT * FROM etapa WHERE id_etapa = $1 AND id_equipe = $2`, [
     equipe.id_etapa_atual,
@@ -113,6 +133,10 @@ export async function avancarEtapa(id: number, delta: 1 | -1): Promise<Equipe> {
   const equipe = await buscarEquipePorId(id);
   const etapaAtual = await buscarEtapaAtualComOrdem(equipe);
 
+  // regra: só avança quando todas as tarefas da etapa atual estão aprovadas
+  // (retroceder continua livre)
+  if (delta === 1) await garantirTarefasDaEtapaAprovadas(id, etapaAtual.id_etapa, "avançar de etapa");
+
   const maxOrdemR = await query<{ max: number }>(
     `SELECT MAX(ordem) AS max FROM etapa WHERE id_equipe = $1`,
     [id]
@@ -141,6 +165,8 @@ export async function avancarEtapa(id: number, delta: 1 | -1): Promise<Equipe> {
 export async function marcarProntoParaInovAMF(id: number, pronto: boolean): Promise<Equipe> {
   const equipe = await buscarEquipePorId(id);
   const etapaAtual = await buscarEtapaAtualComOrdem(equipe);
+  // mesma regra do avanço: a última etapa também precisa estar com tudo aprovado
+  if (pronto) await garantirTarefasDaEtapaAprovadas(id, etapaAtual.id_etapa, "aprovar para o InovAMF");
   const maxOrdemR = await query<{ max: number }>(
     `SELECT MAX(ordem) AS max FROM etapa WHERE id_equipe = $1`,
     [id]
