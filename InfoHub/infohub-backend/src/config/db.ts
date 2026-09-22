@@ -1,5 +1,17 @@
-import { Pool } from "pg";
+import { Pool, types } from "pg";
 import { env } from "./env";
+
+/**
+ * Colunas DATE (tarefa.data_limite, lembrete.data_programada) voltam como
+ * texto "AAAA-MM-DD", e não como objeto Date do JavaScript.
+ *
+ * Sem isso, o driver converte "2026-09-19" em meia-noite UTC e a API manda
+ * "2026-09-19T00:00:00.000Z" — no Brasil (UTC-3) isso vira 18/09 às 21h:
+ * as datas apareciam um dia antes e o frontend não conseguia detectar
+ * tarefas atrasadas (ele espera "AAAA-MM-DD").
+ * 1082 é o código interno do tipo DATE no PostgreSQL.
+ */
+types.setTypeParser(1082, (valor: string) => valor);
 
 /**
  * O banco do professor é compartilhado entre as duplas: cada dupla tem o

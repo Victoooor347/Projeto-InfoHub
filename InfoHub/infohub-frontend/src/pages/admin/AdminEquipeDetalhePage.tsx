@@ -49,6 +49,7 @@ export function AdminEquipeDetalhePage() {
     anotacoes,
     equipeMentores,
     avancarEtapa,
+    marcarProntoParaInovAMF,
     criarTarefa,
     atualizarStatusTarefa,
     atualizarPrazoTarefa,
@@ -230,6 +231,33 @@ export function AdminEquipeDetalhePage() {
             </div>
           </div>
           <StageRail etapas={etapasEquipe} ordemAtual={equipe.etapa_atual_ordem} pronto={equipe.pronto_para_inovamf} />
+
+          {/* Última etapa da jornada: admin ou mentor da equipe decide se ela
+              está pronta para seguir para o InovAMF. Se a equipe voltar uma
+              etapa, a marcação é desfeita automaticamente pelo backend. */}
+          {equipe.etapa_atual_ordem === equipe.total_etapas && (
+            <div
+              className={`mt-4 rounded-xl px-4 py-3 flex flex-wrap items-center justify-between gap-3 ${
+                equipe.pronto_para_inovamf ? "bg-brand-success-soft" : "bg-paper-alt/60"
+              }`}
+            >
+              <p className="text-sm text-ink flex items-center gap-2">
+                <Sparkles size={15} className={equipe.pronto_para_inovamf ? "text-brand-success" : "text-accent-orange"} />
+                {equipe.pronto_para_inovamf
+                  ? "Equipe aprovada: pronta para o InovAMF."
+                  : "A equipe está na última etapa. Ela está pronta para o InovAMF?"}
+              </p>
+              {equipe.pronto_para_inovamf ? (
+                <SecondaryButton onClick={() => marcarProntoParaInovAMF(idEquipe, false)}>
+                  Desfazer aprovação
+                </SecondaryButton>
+              ) : (
+                <PrimaryButton onClick={() => marcarProntoParaInovAMF(idEquipe, true)}>
+                  Aprovar para o InovAMF
+                </PrimaryButton>
+              )}
+            </div>
+          )}
 
           {/* Decisão do InfoHub (WhatsApp): a jornada padrão segue com 6 etapas,
               mas o mentor DESTA equipe pode acrescentar etapas extras. */}
